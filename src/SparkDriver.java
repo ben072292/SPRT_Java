@@ -94,6 +94,9 @@ public class SparkDriver implements Serializable{
 			
 			// Spark logic
 			// 1. add new scan to distributedDataset
+
+			// Not sure broadcast new brain volume would be a good way.
+			// Might cause performance issue.
 			distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>(){
 				public DistributedDataset call(DistributedDataset distributedDataset) {
 					int len = distributedDataset.getBoldResponse().length;
