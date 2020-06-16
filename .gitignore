@@ -1,0 +1,4 @@
+bin/
+*Latest_data*/
+target/
+test/
