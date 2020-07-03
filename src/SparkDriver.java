@@ -19,7 +19,7 @@ public class SparkDriver implements Serializable{
 	public static void main(String[] args) {
 		// configure spark
         SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT")
-                                        .setMaster("local[8]").set("spark.executor.memory","2g");
+                                        .setMaster("local[2]").set("spark.executor.memory","8g");
         // start a spark context
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
         
@@ -50,7 +50,7 @@ public class SparkDriver implements Serializable{
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 		
 		// Continue reading till reaching the K-th scan
-		for(scanNumber = 2; scanNumber <= config.K; scanNumber++) {
+		for(scanNumber = 2; scanNumber <= 238; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
 			BOLDPath = config.assemblyBOLDPath(scanNumber);
 			volume = volumeReader.readFile(BOLDPath, scanNumber);
@@ -59,18 +59,18 @@ public class SparkDriver implements Serializable{
 		//System.out.println(dataset.getVolume(config.K));
 		
 		// Prepare
-		System.out.println("Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
+		System.out.println("Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
 		
 		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
 		
 		for(scanNumber = config.K+1; scanNumber <= config.ROW; scanNumber++) {
-			System.out.println("Reading Scan " + scanNumber);
+			//System.out.println("Reading Scan " + scanNumber);
 			BOLDPath = config.assemblyBOLDPath(scanNumber);
 			volume = volumeReader.readFile(BOLDPath, scanNumber);
 			
-			dataset.addOneScan(volume);
+			//dataset.addOneScan(volume);
 			
-			X = designMatrix.toMatrix(scanNumber);
+			X = designMatrix.toMatrix(238);
 			
 			Matrix XTXInverse = Numerical.computeXTXInverse(X);
 			Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
@@ -85,30 +85,30 @@ public class SparkDriver implements Serializable{
 			
 			// Create Spark shared variables
 			Broadcast<Matrix> broadcastX = sc.broadcast(X);
-			Broadcast<Matrix> broadcastXTXInverse = sc.broadcast(XTXInverse);
+			//Broadcast<Matrix> broadcastXTXInverse = sc.broadcast(XTXInverse);
 			Broadcast<Matrix> broadcastXTXInverseXT = sc.broadcast(XTXInverseXT);
-			Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
-			Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
+			//Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
+			//Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
 			Broadcast<double[]> broadcastH = sc.broadcast(H);
-			Broadcast<Brain> broadcastVolume = sc.broadcast(volume);
+			//Broadcast<Brain> broadcastVolume = sc.broadcast(volume);
 			
 			// Spark logic
 			// 1. add new scan to distributedDataset
 
 			// Not sure broadcast new brain volume would be a good way.
 			// Might cause performance issue.
-			distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>(){
-				public DistributedDataset call(DistributedDataset distributedDataset) {
-					int len = distributedDataset.getBoldResponse().length;
-					double[] array = new double[len+1];
-					for(int i = 0; i < len; i++) {
-						array[i] = distributedDataset.getBoldResponse()[i];
-					}
-					array[len] = broadcastVolume.value().getVoxel(distributedDataset.getX(), distributedDataset.getY(), distributedDataset.getZ());
-					
-					return new DistributedDataset(array, distributedDataset.getX(), distributedDataset.getY(), distributedDataset.getZ());
-				}
-			});
+//			distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>(){
+//				public DistributedDataset call(DistributedDataset distributedDataset) {
+//					int len = distributedDataset.getBoldResponse().length;
+//					double[] array = new double[len+1];
+//					for(int i = 0; i < len; i++) {
+//						array[i] = distributedDataset.getBoldResponse()[i];
+//					}
+//					array[len] = broadcastVolume.value().getVoxel(distributedDataset.getX(), distributedDataset.getY(), distributedDataset.getZ());
+//					
+//					return new DistributedDataset(array, distributedDataset.getX(), distributedDataset.getY(), distributedDataset.getZ());
+//				}
+//			});
 			
 			// 2. Perform computation
 			JavaRDD<CollectedDataset> res = distributedDataset.map(new Function<DistributedDataset, CollectedDataset>() {
@@ -119,7 +119,7 @@ public class SparkDriver implements Serializable{
 					double[] R = Numerical.computeR(distributedDataset.getBoldResponseMatrix(), broadcastX.value(), beta);
 					Matrix D = Numerical.generateD(R, broadcastH.value());
 					
-					if(broadcastROI.value()[broadcastVolume.value().getLocation(distributedDataset.getX(), distributedDataset.getY(), distributedDataset.getZ())]) {
+					if(broadcastROI.value()[distributedDataset.getID()]) {
 						for(int i = 0; i < broadcastC.value().getRow(); i++) {
 							Matrix c = broadcastC.value().getRowSlice(i);
 							//double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c, broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
@@ -151,7 +151,7 @@ public class SparkDriver implements Serializable{
 					if(cd.getSPRTActivationStatus(i) == 1) counter++;
 				}
 			}
-			System.out.println(counter);
+			System.out.println("Result at 238: " + counter);
 		}
 		sc.close();
 	}

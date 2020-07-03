@@ -23,6 +23,39 @@
           <release>9</release>
         </configuration>
       </plugin>
+      <plugin>
+			  <groupId>org.apache.maven.plugins</groupId>
+			  <artifactId>maven-jar-plugin</artifactId>
+			  <configuration>
+				   <archive>
+					   <manifest>
+               <addClasspath>true</addClasspath>
+						   <mainClass>SparkDriver</mainClass>
+					   </manifest>
+				   </archive>
+			</configuration>
+		</plugin>
+    <plugin>
+      <groupId>org.codehaus.mojo</groupId>
+      <artifactId>exec-maven-plugin</artifactId>
+      <version>1.2.1</version>
+      <configuration>
+         <mainClass>SparkDriver</mainClass>
+      </configuration>
+    </plugin>
+    <plugin>
+      <artifactId>maven-assembly-plugin</artifactId>
+      <configuration>
+        <archive>
+          <manifest>
+            <mainClass>SparkDriver</mainClass>
+          </manifest>
+        </archive>
+        <descriptorRefs>
+          <descriptorRef>jar-with-dependencies</descriptorRef>
+        </descriptorRefs>
+      </configuration>
+    </plugin>
     </plugins>
   </build>
   <dependencies>
