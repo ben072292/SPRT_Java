@@ -1,5 +1,6 @@
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 
 import org.apache.spark.SparkConf;
@@ -7,6 +8,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.*;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.util.LongAccumulator;
 import org.spark_project.guava.primitives.Doubles;
 
 /**
@@ -59,16 +61,20 @@ public class SparkDriver implements Serializable{
 		//System.out.println(dataset.getVolume(config.K));
 		
 		// Prepare
-		System.out.println("Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
+		Date time = new Date();
+		System.out.println(time + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
 		
 		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
 		
 		for(scanNumber = config.K+1; scanNumber <= config.ROW; scanNumber++) {
 			//System.out.println("Reading Scan " + scanNumber);
-			BOLDPath = config.assemblyBOLDPath(scanNumber);
-			volume = volumeReader.readFile(BOLDPath, scanNumber);
+			//BOLDPath = config.assemblyBOLDPath(scanNumber);
+			//volume = volumeReader.readFile(BOLDPath, scanNumber);
 			
 			//dataset.addOneScan(volume);
+			
+			time = new Date();
+			System.out.println(time + ": Initializing broadcast variables");
 			
 			X = designMatrix.toMatrix(238);
 			
@@ -111,7 +117,9 @@ public class SparkDriver implements Serializable{
 //			});
 			
 			// 2. Perform computation
-			JavaRDD<CollectedDataset> res = distributedDataset.map(new Function<DistributedDataset, CollectedDataset>() {
+			time = new Date();
+			System.out.println(time + ": Starting computation in workers");
+			JavaRDD<CollectedDataset> collectedDataset = distributedDataset.map(new Function<DistributedDataset, CollectedDataset>() {
 				public CollectedDataset call(DistributedDataset distributedDataset) {
 					CollectedDataset ret = new CollectedDataset(broadcastC.value().getRow());
 					
@@ -144,14 +152,30 @@ public class SparkDriver implements Serializable{
 				}
 			});
 			
-			int counter = 0;
-			List<CollectedDataset> list = res.collect();
-			for(CollectedDataset cd : list) {
-				for(int i = 0; i < cd.getNumOfC(); i++) {
-					if(cd.getSPRTActivationStatus(i) == 1) counter++;
+			// 3. Get statistics from collected dataset
+			time = new Date();
+			System.out.println(time + ": Retriving data from RDDs");
+			JavaRDD<Integer> activationMap = collectedDataset.map(new Function<CollectedDataset, Integer>(){
+				public Integer call (CollectedDataset collectedDataset) {
+					int sum = 0;
+					for(int i = 0; i < broadcastC.value().getRow(); i++) {
+						if(collectedDataset.getSPRTActivationStatus(i) == 1) sum++;
+					}
+					return new Integer(sum);
 				}
-			}
-			System.out.println("Result at 238: " + counter);
+			});
+			
+			LongAccumulator accum = sc.sc().longAccumulator();
+			activationMap.foreach(x->accum.add(x));
+			time = new Date();
+			System.out.println(time + ": "+ accum);
+			
+			// 3.1 Testing rdd.take()
+			time = new Date();
+			System.out.println(time + ": Retriving data from RDDs using take()");
+			collectedDataset.take(1);
+			time = new Date();
+			System.out.println(time + ": Retrived");
 		}
 		sc.close();
 	}
