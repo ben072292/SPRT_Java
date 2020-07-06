@@ -61,8 +61,7 @@ public class SparkDriver implements Serializable{
 		//System.out.println(dataset.getVolume(config.K));
 		
 		// Prepare
-		Date time = new Date();
-		System.out.println(time + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
+		System.out.println(new Date() + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
 		
 		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
 		
@@ -72,9 +71,7 @@ public class SparkDriver implements Serializable{
 			//volume = volumeReader.readFile(BOLDPath, scanNumber);
 			
 			//dataset.addOneScan(volume);
-			
-			time = new Date();
-			System.out.println(time + ": Round " + scanNumber + ": Initializing broadcast variables");
+			System.out.println(new Date() + ": Round " + scanNumber + ": Initializing broadcast variables");
 			
 			X = designMatrix.toMatrix(238);
 			
@@ -117,8 +114,7 @@ public class SparkDriver implements Serializable{
 //			});
 			
 			// 2. Perform computation
-			time = new Date();
-			System.out.println(time + ": Round " + scanNumber + ": Starting computation in workers");
+			System.out.println(new Date() + ": Round " + scanNumber + ": Starting computation in workers");
 			JavaRDD<CollectedDataset> collectedDataset = distributedDataset.map(new Function<DistributedDataset, CollectedDataset>() {
 				public CollectedDataset call(DistributedDataset distributedDataset) {
 					CollectedDataset ret = new CollectedDataset(broadcastC.value().getRow());
@@ -151,10 +147,9 @@ public class SparkDriver implements Serializable{
 					return ret;
 				}
 			});
-			
+			System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for collectedDataset RDD: " + collectedDataset.count());
 			// 3. Get statistics from collected dataset
-			time = new Date();
-			System.out.println(time + ": Round " + scanNumber + ": Transform to activation map Rdd");
+			System.out.println(new Date() + ": Round " + scanNumber + ": Transform to activation map Rdd");
 			JavaRDD<Integer> activationMap = collectedDataset.map(new Function<CollectedDataset, Integer>(){
 				public Integer call (CollectedDataset collectedDataset) {
 					int sum = 0;
@@ -164,20 +159,17 @@ public class SparkDriver implements Serializable{
 					return new Integer(sum);
 				}
 			});
+			System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for activationMap RDD: " + activationMap.count());
 			
-			time = new Date();
-			System.out.println(time + ": Round " + scanNumber + ": Retriving data from RDDs");
+			System.out.println(new Date() + ": Round " + scanNumber + ": Retriving data from activationMap RDD");
 			LongAccumulator accum = sc.sc().longAccumulator();
 			activationMap.foreach(x->accum.add(x));
-			time = new Date();
-			System.out.println(time + ": "+ accum);
+			System.out.println(new Date() + ": "+ accum);
 			
 			// 3.1 Testing rdd.take()
-			time = new Date();
-			System.out.println(time + ": Round " + scanNumber + ": Retriving data from RDDs using take()");
+			System.out.println(new Date() + ": Round " + scanNumber + ": Retriving data from activationMap RDD using take()");
 			collectedDataset.take(1);
-			time = new Date();
-			System.out.println(time + ": Round " + scanNumber + ": Retrived");
+			System.out.println(new Date() + ": Round " + scanNumber + ": Retrived");
 		}
 		sc.close();
 	}
