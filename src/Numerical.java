@@ -110,7 +110,7 @@ public class Numerical {
 		return Math.min(A, B);
 	}
 	
-	public static double computeActivationStatus(double SPRT, double upper, double lower) {
+	public static int computeActivationStatus(double SPRT, double upper, double lower) {
 		if(SPRT > upper) return 1;
 		else if (SPRT < lower) return -1;
 		else return 0;
