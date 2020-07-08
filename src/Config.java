@@ -21,7 +21,7 @@ public class Config implements Serializable{
 	public double SPRTUpperBound = Numerical.SPRTUpperBound(alpha, beta);
 	public double SPRTLowerBound = Numerical.SPRTLowerBound(alpha, beta);
 	public String BOLDPath = "Latest_data/";
-	public String BOLDPrefix = "BOLD";
+	public String BOLDPrefix = "bold";
 	
 	private int x = 0;
 	private int y = 0;
