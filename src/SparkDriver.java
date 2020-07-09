@@ -21,7 +21,7 @@ public class SparkDriver implements Serializable{
 	public static void main(String[] args) {
 		// configure spark
         SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT")
-                                        .setMaster("local[8]").set("spark.executor.memory","8g");
+                                        .setMaster("local[16]").set("spark.executor.memory","2g");
         // start a spark context
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
         
@@ -48,7 +48,7 @@ public class SparkDriver implements Serializable{
 		boolean[] ROI = config.getROI();
 		dataset.setROI(ROI);
 		
-		Broadcast<boolean[]> broadcastROI = sc.broadcast(ROI);
+		//Broadcast<boolean[]> broadcastROI = sc.broadcast(ROI);
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 		
 		// Continue reading till reaching the K-th scan
@@ -65,55 +65,31 @@ public class SparkDriver implements Serializable{
 		
 		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
 		
+		X = designMatrix.toMatrix(238);
+		
+		Matrix XTXInverse = Numerical.computeXTXInverse(X);
+		Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
+		Matrix XXTXInverse = X.multiply(XTXInverse);
+		double[] CTXTXInverseC = new double[C.getRow()];
+		for(int i = 0; i < C.getRow(); i++) {
+			Matrix c = C.getRowSlice(i);
+			CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get(); 
+		}
+		double[] H = Numerical.computeH(XXTXInverse, X);
+		
+		
+		// Create Spark shared variables
+		Broadcast<Matrix> broadcastX = sc.broadcast(X);
+		//Broadcast<Matrix> broadcastXTXInverse = sc.broadcast(XTXInverse);
+		Broadcast<Matrix> broadcastXTXInverseXT = sc.broadcast(XTXInverseXT);
+		//Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
+		//Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
+		Broadcast<double[]> broadcastH = sc.broadcast(H);
+		//Broadcast<Brain> broadcastVolume = sc.broadcast(volume);
+		
 		for(scanNumber = config.K+1; scanNumber <= config.ROW; scanNumber++) {
-			//System.out.println("Reading Scan " + scanNumber);
-			//BOLDPath = config.assemblyBOLDPath(scanNumber);
-			//volume = volumeReader.readFile(BOLDPath, scanNumber);
 			
-			//dataset.addOneScan(volume);
-			System.out.println(new Date() + ": Round " + scanNumber + ": Initializing broadcast variables");
-			
-			X = designMatrix.toMatrix(238);
-			
-			Matrix XTXInverse = Numerical.computeXTXInverse(X);
-			Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-			Matrix XXTXInverse = X.multiply(XTXInverse);
-			double[] CTXTXInverseC = new double[C.getRow()];
-			for(int i = 0; i < C.getRow(); i++) {
-				Matrix c = C.getRowSlice(i);
-				CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get(); 
-			}
-			double[] H = Numerical.computeH(XXTXInverse, X);
-			
-			
-			// Create Spark shared variables
-			Broadcast<Matrix> broadcastX = sc.broadcast(X);
-			//Broadcast<Matrix> broadcastXTXInverse = sc.broadcast(XTXInverse);
-			Broadcast<Matrix> broadcastXTXInverseXT = sc.broadcast(XTXInverseXT);
-			//Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
-			//Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
-			Broadcast<double[]> broadcastH = sc.broadcast(H);
-			//Broadcast<Brain> broadcastVolume = sc.broadcast(volume);
-			
-			// Spark logic
-			// 1. add new scan to distributedDataset
-
-			// Not sure broadcast new brain volume would be a good way.
-			// Might cause performance issue.
-//			distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>(){
-//				public DistributedDataset call(DistributedDataset distributedDataset) {
-//					int len = distributedDataset.getBoldResponse().length;
-//					double[] array = new double[len+1];
-//					for(int i = 0; i < len; i++) {
-//						array[i] = distributedDataset.getBoldResponse()[i];
-//					}
-//					array[len] = broadcastVolume.value().getVoxel(distributedDataset.getX(), distributedDataset.getY(), distributedDataset.getZ());
-//					
-//					return new DistributedDataset(array, distributedDataset.getX(), distributedDataset.getY(), distributedDataset.getZ());
-//				}
-//			});
-			
-			// 2. Perform computation
+			// 1. Perform computation
 			System.out.println(new Date() + ": Round " + scanNumber + ": Starting computation in workers");
 			JavaRDD<CollectedDataset> collectedDataset = distributedDataset.map(new Function<DistributedDataset, CollectedDataset>() {
 				public CollectedDataset call(DistributedDataset distributedDataset) {
@@ -123,32 +99,30 @@ public class SparkDriver implements Serializable{
 					double[] R = Numerical.computeR(distributedDataset.getBoldResponseMatrix(), broadcastX.value(), beta);
 					Matrix D = Numerical.generateD(R, broadcastH.value());
 					
-					if(broadcastROI.value()[distributedDataset.getID()]) {
-						for(int i = 0; i < broadcastC.value().getRow(); i++) {
-							Matrix c = broadcastC.value().getRowSlice(i);
-							//double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c, broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
-							double variance = Numerical.computeVariance(c, broadcastX.value(), D);
-							double cBeta = Numerical.computeCBeta(c, beta);
-							double ZScore = Numerical.computeZ(cBeta, variance);
-							double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
-							double SPRT = Numerical.compute_SPRT(cBeta, config.theta0, theta1, variance);
-							int SPRTActivationStatus = Numerical.computeActivationStatus(SPRT, config.SPRTUpperBound, config.SPRTLowerBound);
-							
-							ret.setVariance(i, variance);
-							ret.setCBeta(i, cBeta);
-							ret.setZScore(i, ZScore);
-							ret.setTheta1(i, theta1);
-							ret.setSPRT(i, SPRT);
-							ret.setSPRTActivationStatus(i, SPRTActivationStatus);
-							
-						}
+					for(int i = 0; i < broadcastC.value().getRow(); i++) {
+						Matrix c = broadcastC.value().getRowSlice(i);
+						//double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c, broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
+						double variance = Numerical.computeVariance(c, broadcastX.value(), D);
+						double cBeta = Numerical.computeCBeta(c, beta);
+						double ZScore = Numerical.computeZ(cBeta, variance);
+						double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
+						double SPRT = Numerical.compute_SPRT(cBeta, config.theta0, theta1, variance);
+						int SPRTActivationStatus = Numerical.computeActivationStatus(SPRT, config.SPRTUpperBound, config.SPRTLowerBound);
+
+						ret.setVariance(i, variance);
+						ret.setCBeta(i, cBeta);
+						ret.setZScore(i, ZScore);
+						ret.setTheta1(i, theta1);
+						ret.setSPRT(i, SPRT);
+						ret.setSPRTActivationStatus(i, SPRTActivationStatus);
+
 					}
-					
 					return ret;
 				}
 			});
-			System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for collectedDataset RDD: " + collectedDataset.count());
-			// 3. Get statistics from collected dataset
+			//System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for collectedDataset RDD: " + collectedDataset.count());
+			
+			// 2. Get statistics from collected dataset
 			System.out.println(new Date() + ": Round " + scanNumber + ": Transform to activation map Rdd");
 			JavaRDD<Integer> activationMap = collectedDataset.map(new Function<CollectedDataset, Integer>(){
 				public Integer call (CollectedDataset collectedDataset) {
@@ -159,7 +133,7 @@ public class SparkDriver implements Serializable{
 					return new Integer(sum);
 				}
 			});
-			System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for activationMap RDD: " + activationMap.count());
+			//System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for activationMap RDD: " + activationMap.count());
 			
 			System.out.println(new Date() + ": Round " + scanNumber + ": Retriving data from activationMap RDD");
 			LongAccumulator accum = sc.sc().longAccumulator();
@@ -167,9 +141,9 @@ public class SparkDriver implements Serializable{
 			System.out.println(new Date() + ": "+ accum);
 			
 			// 3.1 Testing rdd.take()
-			System.out.println(new Date() + ": Round " + scanNumber + ": Retriving data from activationMap RDD using take()");
-			collectedDataset.take(1);
-			System.out.println(new Date() + ": Round " + scanNumber + ": Retrived");
+//			System.out.println(new Date() + ": Round " + scanNumber + ": Retriving data from activationMap RDD using take()");
+//			collectedDataset.take(1);
+//			System.out.println(new Date() + ": Round " + scanNumber + ": Retrived");
 		}
 		sc.close();
 	}

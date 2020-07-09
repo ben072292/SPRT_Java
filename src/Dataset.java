@@ -65,7 +65,10 @@ public class Dataset implements Serializable {
 		for(int x = 0; x < this.x; x++) {
 			for(int y = 0; y < this.y; y++) {
 				for(int z = 0; z < this.z; z++) {
-					ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, getLocation(x, y, z)));
+					int position = getLocation(x, y, z);
+					if(ROI[position]) {
+						ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, position));
+					}
 				}
 			}
 		}
