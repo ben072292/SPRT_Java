@@ -8,7 +8,7 @@ public class CollectedDataset implements Serializable{
 	private double[] ZScore;
 	private double[] theta1;
 	private double[] SPRT;
-	private double[] SPRTActivationStatus;
+	private int[] SPRTActivationStatus;
 	
 	public CollectedDataset(int numOfC) {
 		this.numOfC = numOfC;
@@ -17,7 +17,7 @@ public class CollectedDataset implements Serializable{
 		this.ZScore = new double[numOfC];
 		this.theta1 = new double[numOfC];
 		this.SPRT = new double[numOfC];
-		this.SPRTActivationStatus = new double[numOfC];
+		this.SPRTActivationStatus = new int[numOfC];
 	}
 	
 	public int getNumOfC() {
@@ -64,11 +64,11 @@ public class CollectedDataset implements Serializable{
 		this.SPRT[index] = value;
 	}
 	
-	public double getSPRTActivationStatus(int index) {
+	public int getSPRTActivationStatus(int index) {
 		return this.SPRTActivationStatus[index];
 	}
 	
-	public void setSPRTActivationStatus(int index, double value) {
+	public void setSPRTActivationStatus(int index, int value) {
 		this.SPRTActivationStatus[index] = value;
 	}
 	

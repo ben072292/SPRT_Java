@@ -1,15 +1,10 @@
 import java.io.Serializable;
-import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
-
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.*;
 import org.apache.spark.broadcast.Broadcast;
-import org.apache.spark.util.LongAccumulator;
-import org.spark_project.guava.primitives.Doubles;
 
 /**
  * The Driver class using Apache Spark
@@ -18,12 +13,13 @@ import org.spark_project.guava.primitives.Doubles;
  */
 @SuppressWarnings("serial")
 public class SparkDriver implements Serializable{
+	private static JavaSparkContext sc;
+
 	public static void main(String[] args) {
 		// configure spark
         SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT")
                                         .setMaster("local[8]").set("spark.executor.memory","8g");
-        // start a spark context
-        JavaSparkContext sc = new JavaSparkContext(sparkConf);
+        sc = new JavaSparkContext(sparkConf);
         
 		// load configuration and predefined data
 		System.out.println("load configuration and predefined data");
@@ -146,10 +142,12 @@ public class SparkDriver implements Serializable{
 					return ret;
 				}
 			});
+			
+			
 			//System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for collectedDataset RDD: " + collectedDataset.count());
 			// 3. Get statistics from collected dataset
 			System.out.println(new Date() + ": Round " + scanNumber + ": Transform to activation map Rdd");
-			JavaRDD<Integer> activationMap = collectedDataset.map(new Function<CollectedDataset, Integer>(){
+			int activationCounter = collectedDataset.map(new Function<CollectedDataset, Integer>(){
 				public Integer call (CollectedDataset collectedDataset) {
 					int sum = 0;
 					for(int i = 0; i < broadcastC.value().getRow(); i++) {
@@ -157,13 +155,10 @@ public class SparkDriver implements Serializable{
 					}
 					return new Integer(sum);
 				}
-			});
+			}).reduce((a, b) -> a+ b);
 			//System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for activationMap RDD: " + activationMap.count());
 			
-			System.out.println(new Date() + ": Round " + scanNumber + ": Retriving data from activationMap RDD");
-			LongAccumulator accum = sc.sc().longAccumulator();
-			activationMap.foreach(x->accum.add(x));
-			System.out.println(new Date() + ": "+ accum);
+			System.out.println(new Date() + ": "+ activationCounter);
 			
 			// 3.1 Testing rdd.take()
 //			System.out.println(new Date() + ": Round " + scanNumber + ": Retriving data from activationMap RDD using take()");
