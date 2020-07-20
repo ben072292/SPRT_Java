@@ -67,7 +67,22 @@ public class Dataset implements Serializable {
 				for(int z = 0; z < this.z; z++) {
 					int pos = getLocation(x, y, z);
 					//if(ROI[pos]) {
-						ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, pos, ROI[pos]));
+						ret.add(new DistributedDataset(getFullBoldResponse(x, y, z), x, y, z, pos, ROI[pos]));
+					//}
+				}
+			}
+		}
+		return ret;
+	}
+	
+	public ArrayList<DistributedDataset> toDistrbutedDataset(int scanNumber){
+		ArrayList<DistributedDataset> ret = new ArrayList<>(this.x * this.y * this.z);
+		for(int x = 0; x < this.x; x++) {
+			for(int y = 0; y < this.y; y++) {
+				for(int z = 0; z < this.z; z++) {
+					int pos = getLocation(x, y, z);
+					//if(ROI[pos]) {
+						ret.add(new DistributedDataset(getSingleBoldResponse(scanNumber, x, y, z), x, y, z, pos, ROI[pos]));
 					//}
 				}
 			}
@@ -131,11 +146,18 @@ public class Dataset implements Serializable {
 		return new Matrix(arr, this.currentScans, 1);
 	}
 	
-	public double[] getBoldResponseAsArray(int x, int y, int z) {
+	public double[] getFullBoldResponse(int x, int y, int z) {
 		double[] ret = new double[this.currentScans];
 		for(int i = 0; i < this.currentScans; i++) {
 			ret[i] = getSignal(i+1, x, y, z);
 		}
+		return ret;
+	}
+	
+	public double[] getSingleBoldResponse(int scanNumber, int x, int y, int z) {
+		assert(scanNumber > 0 && scanNumber <= this.currentScans) : "getSingleBoldResponse: scanNumber is out of range!";
+		double[] ret = new double[1];
+		ret[0] = getSignal(scanNumber, x, y, z);
 		return ret;
 	}
 	

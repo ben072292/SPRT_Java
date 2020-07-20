@@ -1,10 +1,14 @@
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.*;
 import org.apache.spark.broadcast.Broadcast;
+
+import scala.Tuple2;
 
 /**
  * The Driver class using Apache Spark
@@ -18,9 +22,9 @@ public class SparkDriver implements Serializable{
 	public static void main(String[] args) {
 		// configure spark
         SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT")
-                                        .setMaster("local[8]").set("spark.executor.memory","8g");
+                                        .setMaster("local[4]").set("spark.executor.memory","2g");
         sc = new JavaSparkContext(sparkConf);
-        
+
 		// load configuration and predefined data
 		System.out.println("load configuration and predefined data");
 		Config config = new Config();
@@ -58,7 +62,7 @@ public class SparkDriver implements Serializable{
 		// Prepare
 		System.out.println(new Date() + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
 		
-		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
+		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset());
 		
 		for(scanNumber = config.K+1; scanNumber <= config.ROW; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
@@ -88,24 +92,34 @@ public class SparkDriver implements Serializable{
 			//Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
 			//Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
 			Broadcast<double[]> broadcastH = sc.broadcast(H);
-			Broadcast<Brain> broadcastVolume = sc.broadcast(volume);
 			
 			// Spark logic
-			// 1. add new scan to distributedDataset
+			// 1.1 parallelize newly added scan 
+			JavaRDD<DistributedDataset> newDistributedDataset = sc.parallelize(dataset.toDistrbutedDataset(scanNumber));
+			
+			// 1.2 zip up newly added scan to existing scans
+			JavaPairRDD<DistributedDataset, DistributedDataset> pairedDataset = distributedDataset.zip(newDistributedDataset);
+			
+			// 1.3 using map() to flatten.
+			
+			distributedDataset = pairedDataset.map(new Function<Tuple2<DistributedDataset, DistributedDataset>, DistributedDataset>(){
 
-			// Not sure broadcast new brain volume would be a good way.
-			// Might cause performance issue.
-			distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>(){
-				public DistributedDataset call(DistributedDataset distributedDataset) {
-					int len = distributedDataset.getBoldResponse().length;
-					double[] array = new double[len+1];
-					for(int i = 0; i < len; i++) {
-						array[i] = distributedDataset.getBoldResponse()[i];
+				@Override
+				public DistributedDataset call(Tuple2<DistributedDataset, DistributedDataset> v1) throws Exception {
+					double[] array = new double[v1._1.getBoldResponse().length + v1._2.getBoldResponse().length];
+					int counter = 0;
+					for(int i = 0; i < v1._1.getBoldResponse().length; i++) {
+						array[counter] = v1._1.getBoldResponse()[i];
+						counter++;
 					}
-					array[len] = broadcastVolume.value().getVoxel(distributedDataset.getX(), distributedDataset.getY(), distributedDataset.getZ());
+					for(int i = 0; i < v1._2.getBoldResponse().length; i++) {
+						array[counter] = v1._2.getBoldResponse()[i];
+						counter++;
+					}
 					
-					return new DistributedDataset(array, distributedDataset);
+					return new DistributedDataset(array, v1._1);
 				}
+				
 			});
 			
 			// 2. Perform computation
