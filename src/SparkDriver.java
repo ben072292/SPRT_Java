@@ -1,6 +1,7 @@
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.Date;
+
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -22,7 +23,7 @@ public class SparkDriver implements Serializable{
 	public static void main(String[] args) {
 		// configure spark
         SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT")
-                                        .setMaster("local[8]").set("spark.executor.memory","8g");
+                                        .setMaster("local[2]").set("spark.executor.memory","4g");
         sc = new JavaSparkContext(sparkConf);
 
 		// load configuration and predefined data
@@ -62,7 +63,7 @@ public class SparkDriver implements Serializable{
 		// Prepare
 		System.out.println(new Date() + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
 		
-		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset());
+		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
 		
 		for(scanNumber = config.K+1; scanNumber <= config.ROW; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
@@ -94,33 +95,21 @@ public class SparkDriver implements Serializable{
 			Broadcast<double[]> broadcastH = sc.broadcast(H);
 			
 			// Spark logic
-			// 1.1 parallelize newly added scan 
+			// 1.1 Parallelize newly added scan 
 			JavaRDD<DistributedDataset> newDistributedDataset = sc.parallelize(dataset.toDistrbutedDataset(scanNumber));
 			
-			// 1.2 zip up newly added scan to existing scans
+			// 1.2 Zip up newly added scan to existing scans
 			JavaPairRDD<DistributedDataset, DistributedDataset> pairedDataset = distributedDataset.zip(newDistributedDataset);
-			distributedDataset.unpersist();
 			
-			// 1.3 using map() to flatten.
-			
+			// 1.3 Using map() to flatten.
 			distributedDataset = pairedDataset.map(new Function<Tuple2<DistributedDataset, DistributedDataset>, DistributedDataset>(){
 
 				@Override
 				public DistributedDataset call(Tuple2<DistributedDataset, DistributedDataset> v1) throws Exception {
-					double[] array = new double[v1._1.getBoldResponse().length + v1._2.getBoldResponse().length];
-					int counter = 0;
-					for(int i = 0; i < v1._1.getBoldResponse().length; i++) {
-						array[counter] = v1._1.getBoldResponse()[i];
-						counter++;
-					}
-					for(int i = 0; i < v1._2.getBoldResponse().length; i++) {
-						array[counter] = v1._2.getBoldResponse()[i];
-						counter++;
-					}
-					return new DistributedDataset(array, v1._1);
+					return new DistributedDataset(ArrayUtils.add(v1._1.getBoldResponse(), v1._2.getBoldResponse()[0]), v1._1);
 				}
 				
-			}).cache();
+			});
 			
 			// 2. Perform computation
 			System.out.println(new Date() + ": Round " + scanNumber + ": Starting computation in workers");
@@ -170,7 +159,7 @@ public class SparkDriver implements Serializable{
 					for(int i = 0; i < broadcastC.value().getRow(); i++) {
 						if(collectedDataset.getSPRTActivationStatus(i) == 1) sum++;
 					}
-					return new Integer(sum);
+					return Integer.valueOf(sum);
 				}
 				
 			}).reduce((a, b) -> a + b);
