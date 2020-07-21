@@ -32,11 +32,14 @@ import static org.bytedeco.mkl.global.mkl_rt.*;
  */
 public class DGEMMExample {
     public static void main(String[] args) throws Exception {
+    	long startTime = System.nanoTime();
+    	long endTime;
+    	long timeElapsed;
         System.out.println("\n This example computes real matrix C=alpha*A*B+beta*C using \n"
                          + " Intel(R) MKL function dgemm, where A, B, and  C are matrices and \n"
                          + " alpha and beta are double precision scalars\n");
 
-        int m = 2000, p = 200, n = 1000;
+        int m = 10000, p = 10000, n = 10000;
         System.out.printf(" Initializing data for matrix multiplication C=A*B for matrix \n"
                         + " A(%dx%d) and matrix B(%dx%d)\n\n", m, p, p, n);
         double alpha = 1.0, beta = 0.0;
@@ -69,42 +72,116 @@ public class DGEMMExample {
         for (int i = 0; i < m * n; i++) {
             C.put(i, 0.0);
         }
-
+        
+        endTime = System.nanoTime();
+        timeElapsed = endTime - startTime;
+        System.out.println("1: Execution time in milliseconds: " + timeElapsed / 1e6);
+        
+        startTime = System.nanoTime();
         System.out.println(" Computing matrix product using Intel(R) MKL dgemm function via CBLAS interface \n");
         cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                     m, n, p, alpha, A, p, B, n, beta, C, n);
         System.out.println("\n Computations completed.\n");
-
-        System.out.println(" Top left corner of matrix A: ");
-        for (int i = 0; i < Math.min(m, 6); i++) {
-            for (int j = 0; j< Math.min(p, 6); j++) {
-                System.out.printf("%12.0f", Aidx.get(j + i * p));
-            }
-            System.out.println();
-        }
-
-        System.out.println("\n Top left corner of matrix B: ");
-        for (int i = 0; i < Math.min(p, 6); i++) {
-            for (int j = 0; j < Math.min(n, 6); j++) {
-                System.out.printf("%12.0f", Bidx.get(j + i * n));
-            }
-            System.out.println();
-        }
-
-        System.out.println("\n Top left corner of matrix C: ");
-        for (int i = 0; i < Math.min(m, 6); i++) {
-            for (int j = 0; j < Math.min(n, 6); j++) {
-                System.out.printf("%12.5G", Cidx.get(j + i * n));
-            }
-            System.out.println();
-        }
-
+        
+        endTime = System.nanoTime();
+        timeElapsed = endTime - startTime;
+        System.out.println("2: Execution time in milliseconds: " + timeElapsed / 1e6);
+        
+        startTime = System.nanoTime();
         System.out.println("\n Deallocating memory \n");
         MKL_free(A);
         MKL_free(B);
         MKL_free(C);
 
         System.out.println(" Example completed. \n");
+        endTime = System.nanoTime();
+        timeElapsed = endTime - startTime;
+        System.out.println("3: Execution time in milliseconds: " + timeElapsed / 1e6);
+        
+        
+        
+        
+        
+        startTime = System.nanoTime();
+        
+
+        System.out.println(" Allocating memory for matrices aligned on 64-byte boundary for better \n"
+                         + " performance \n");
+        
+
+        System.out.println(" Intializing matrix data \n");
+        double[] AA = new double[m *p];
+        for (int i = 0; i < m * p; i++) {
+            AA[i] = i+1;
+        }
+        
+        double[] BB = new double[p * n];
+        for (int i = 0; i < m * p; i++) {
+            BB[i] = -i-1;
+        }
+        
+        double[] CC = new double[m * n];
+        for (int i = 0; i < m * n; i++) {
+            CC[i] = 0;
+        }
+        
+        endTime = System.nanoTime();
+        timeElapsed = endTime - startTime;
+        System.out.println("1: Execution time in milliseconds: " + timeElapsed / 1e6);
+        
+        startTime = System.nanoTime();
+        System.out.println(" Computing matrix product using Intel(R) MKL dgemm function via CBLAS interface \n");
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    m, n, p, alpha, AA, p, BB, n, beta, CC, n);
+        System.out.println("\n Computations completed.\n");
+        
+        endTime = System.nanoTime();
+        timeElapsed = endTime - startTime;
+        System.out.println("2: Execution time in milliseconds: " + timeElapsed / 1e6);
+        
+        
         System.exit(0);
     }
 }
+
+/* Sample Output
+
+This example computes real matrix C=alpha*A*B+beta*C using 
+Intel(R) MKL function dgemm, where A, B, and  C are matrices and 
+alpha and beta are double precision scalars
+
+Initializing data for matrix multiplication C=A*B for matrix 
+A(10000x10000) and matrix B(10000x10000)
+
+Allocating memory for matrices aligned on 64-byte boundary for better 
+performance 
+
+Intializing matrix data 
+
+1: Execution time in milliseconds: 7266.3567
+Computing matrix product using Intel(R) MKL dgemm function via CBLAS interface 
+
+
+Computations completed.
+
+2: Execution time in milliseconds: 31347.3849
+
+Deallocating memory 
+
+Example completed. 
+
+3: Execution time in milliseconds: 98.9658
+Allocating memory for matrices aligned on 64-byte boundary for better 
+performance 
+
+Intializing matrix data 
+
+1: Execution time in milliseconds: 2821.9783
+Computing matrix product using Intel(R) MKL dgemm function via CBLAS interface 
+
+
+Computations completed.
+
+2: Execution time in milliseconds: 33363.7482
+
+*/

@@ -269,7 +269,7 @@ public class Matrix implements Serializable{
 	public static void main(String[] args) throws Exception {
         
         Random rand = new Random();
-        int a = 238;
+        int a = 10000;
         int b = 1;
         
         double[] cc = new double[a*a];

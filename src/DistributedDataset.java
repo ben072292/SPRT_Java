@@ -60,7 +60,7 @@ public class DistributedDataset implements Serializable {
 	public int getID() {
 		return this.id;
 	}
-	
+
 	public boolean getWithinROI() {
 		return this.withinROI;
 	}
