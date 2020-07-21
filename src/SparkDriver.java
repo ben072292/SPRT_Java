@@ -23,8 +23,8 @@ public class SparkDriver implements Serializable {
 
 	public static void main(String[] args) {
 		// configure spark
-		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[8]")
-				.set("spark.executor.memory", "2g");
+		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[2]")
+				.set("spark.executor.memory", "8g");
 		sc = new JavaSparkContext(sparkConf);
 
 		// load configuration and predefined data
@@ -91,7 +91,7 @@ public class SparkDriver implements Serializable {
 			Broadcast<Matrix> broadcastX = sc.broadcast(X);
 			// Broadcast<Matrix> broadcastXTXInverse = sc.broadcast(XTXInverse);
 			Broadcast<Matrix> broadcastXTXInverseXT = sc.broadcast(XTXInverseXT);
-			// Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
+			Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
 			// Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
 			Broadcast<double[]> broadcastH = sc.broadcast(H);
 
@@ -133,9 +133,9 @@ public class SparkDriver implements Serializable {
 
 							for (int i = 0; i < broadcastC.value().getRow(); i++) {
 								Matrix c = broadcastC.value().getRowSlice(i);
-								// double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c,
-								// broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
-								double variance = Numerical.computeVariance(c, broadcastX.value(), D);
+								double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c,
+										broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
+								// double variance = Numerical.computeVariance(c, broadcastX.value(), D);
 								double cBeta = Numerical.computeCBeta(c, beta);
 								double ZScore = Numerical.computeZ(cBeta, variance);
 								double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
