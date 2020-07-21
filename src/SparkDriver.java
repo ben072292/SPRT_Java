@@ -22,7 +22,7 @@ public class SparkDriver implements Serializable{
 	public static void main(String[] args) {
 		// configure spark
         SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT")
-                                        .setMaster("local[4]").set("spark.executor.memory","2g");
+                                        .setMaster("local[8]").set("spark.executor.memory","8g");
         sc = new JavaSparkContext(sparkConf);
 
 		// load configuration and predefined data
@@ -99,6 +99,7 @@ public class SparkDriver implements Serializable{
 			
 			// 1.2 zip up newly added scan to existing scans
 			JavaPairRDD<DistributedDataset, DistributedDataset> pairedDataset = distributedDataset.zip(newDistributedDataset);
+			distributedDataset.unpersist();
 			
 			// 1.3 using map() to flatten.
 			
@@ -116,15 +117,16 @@ public class SparkDriver implements Serializable{
 						array[counter] = v1._2.getBoldResponse()[i];
 						counter++;
 					}
-					
 					return new DistributedDataset(array, v1._1);
 				}
 				
-			});
+			}).cache();
 			
 			// 2. Perform computation
 			System.out.println(new Date() + ": Round " + scanNumber + ": Starting computation in workers");
 			JavaRDD<CollectedDataset> collectedDataset = distributedDataset.map(new Function<DistributedDataset, CollectedDataset>() {
+				
+				@Override
 				public CollectedDataset call(DistributedDataset distributedDataset) {
 					CollectedDataset ret = new CollectedDataset(broadcastC.value().getRow());
 					
@@ -149,12 +151,11 @@ public class SparkDriver implements Serializable{
 							ret.setTheta1(i, theta1);
 							ret.setSPRT(i, SPRT);
 							ret.setSPRTActivationStatus(i, SPRTActivationStatus);
-							
 						}
 					}
-					
 					return ret;
 				}
+				
 			});
 			
 			
@@ -162,6 +163,8 @@ public class SparkDriver implements Serializable{
 			// 3. Get statistics from collected dataset
 			System.out.println(new Date() + ": Round " + scanNumber + ": Transform to activation map Rdd");
 			int activationCounter = collectedDataset.map(new Function<CollectedDataset, Integer>(){
+				
+				@Override
 				public Integer call (CollectedDataset collectedDataset) {
 					int sum = 0;
 					for(int i = 0; i < broadcastC.value().getRow(); i++) {
@@ -169,15 +172,11 @@ public class SparkDriver implements Serializable{
 					}
 					return new Integer(sum);
 				}
-			}).reduce((a, b) -> a+ b);
+				
+			}).reduce((a, b) -> a + b);
 			//System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets for activationMap RDD: " + activationMap.count());
 			
-			System.out.println(new Date() + ": "+ activationCounter);
-			
-			// 3.1 Testing rdd.take()
-//			System.out.println(new Date() + ": Round " + scanNumber + ": Retriving data from activationMap RDD using take()");
-//			collectedDataset.take(1);
-//			System.out.println(new Date() + ": Round " + scanNumber + ": Retrived");
+			System.out.println(new Date() + ": Number of Activated Voxels: " + activationCounter);
 		}
 		sc.close();
 	}
