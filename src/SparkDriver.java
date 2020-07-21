@@ -170,5 +170,6 @@ public class SparkDriver implements Serializable {
 //			System.out.println(new Date() + ": Round " + scanNumber + ": Retrived");
 		}
 		sc.close();
+		
 	}
 }
