@@ -23,12 +23,14 @@ public class SparkDriver implements Serializable {
 
 	public static void main(String[] args) {
 		// configure spark
-		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[2]")
-				.set("spark.executor.memory", "8g");
+		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[4]")
+				.set("spark.executor.memory", "2g");
 		sc = new JavaSparkContext(sparkConf);
 
 		// load configuration and predefined data
+		System.out.println("---------------------------------------------------------------------------");
 		System.out.println("load configuration and predefined data");
+		System.out.println("---------------------------------------------------------------------------");
 		Config config = new Config();
 		DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.ROW, config.COL);
 		Contrasts contrasts = new Contrasts("test/contrasts.txt", config.numContrasts, config.COL);
@@ -39,7 +41,9 @@ public class SparkDriver implements Serializable {
 		System.out.println("Complete");
 
 		// Read in first scan to get some brain volume metadata
+		System.out.println("---------------------------------------------------------------------------");
 		System.out.println("Read in first scan to get some brain volume metadata");
+		System.out.println("---------------------------------------------------------------------------");
 		int scanNumber = 1;
 		String BOLDPath = config.assemblyBOLDPath(1);
 		Brain volume = volumeReader.readFile(BOLDPath, 1);
@@ -49,6 +53,14 @@ public class SparkDriver implements Serializable {
 		System.out.println("Complete");
 		boolean[] ROI = config.getROI();
 		dataset.setROI(ROI);
+		System.out.println("---------------------------------------------------------------------------");
+		int effectiveVoxelNumber = 0;
+		for (boolean b : ROI) {
+			if (b)
+				effectiveVoxelNumber++;
+		}
+		System.out.println("Effective Voxel Number: " + effectiveVoxelNumber);
+		System.out.println("---------------------------------------------------------------------------");
 
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 
@@ -62,8 +74,10 @@ public class SparkDriver implements Serializable {
 		// System.out.println(dataset.getVolume(config.K));
 
 		// Prepare
+		System.out.println("---------------------------------------------------------------------------");
 		System.out
 				.println(new Date() + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
+		System.out.println("---------------------------------------------------------------------------");
 
 		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
 
@@ -73,7 +87,9 @@ public class SparkDriver implements Serializable {
 			volume = volumeReader.readFile(BOLDPath, scanNumber);
 
 			dataset.addOneScan(volume);
+			System.out.println("---------------------------------------------------------------------------");
 			System.out.println(new Date() + ": Round " + scanNumber + ": Initializing broadcast variables");
+			System.out.println("---------------------------------------------------------------------------");
 
 			X = designMatrix.toMatrix(scanNumber);
 
@@ -117,7 +133,9 @@ public class SparkDriver implements Serializable {
 					});
 
 			// 2. Perform computation
+			System.out.println("---------------------------------------------------------------------------");
 			System.out.println(new Date() + ": Round " + scanNumber + ": Starting computation in workers");
+			System.out.println("---------------------------------------------------------------------------");
 			JavaRDD<CollectedDataset> collectedDataset = distributedDataset
 					.map(new Function<DistributedDataset, CollectedDataset>() {
 
@@ -159,7 +177,9 @@ public class SparkDriver implements Serializable {
 			// System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets
 			// for collectedDataset RDD: " + collectedDataset.count());
 			// 3. Get statistics from collected dataset
+			System.out.println("---------------------------------------------------------------------------");
 			System.out.println(new Date() + ": Round " + scanNumber + ": Transform to activation map Rdd");
+			System.out.println("---------------------------------------------------------------------------");
 			int activationCounter = collectedDataset.map(new Function<CollectedDataset, Integer>() {
 
 				@Override
@@ -175,8 +195,9 @@ public class SparkDriver implements Serializable {
 			}).reduce((a, b) -> a + b);
 			// System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets
 			// for activationMap RDD: " + activationMap.count());
-
+			System.out.println("---------------------------------------------------------------------------");
 			System.out.println(new Date() + ": Number of Activated Voxels: " + activationCounter);
+			System.out.println("---------------------------------------------------------------------------");
 		}
 		sc.close();
 	}

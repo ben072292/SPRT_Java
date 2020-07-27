@@ -4,7 +4,6 @@ import static org.bytedeco.mkl.global.mkl_rt.CblasTrans;
 import static org.bytedeco.mkl.global.mkl_rt.LAPACKE_dgetrf;
 import static org.bytedeco.mkl.global.mkl_rt.LAPACKE_dgetri;
 import static org.bytedeco.mkl.global.mkl_rt.LAPACK_ROW_MAJOR;
-import static org.bytedeco.mkl.global.mkl_rt.MKL_free;
 import static org.bytedeco.mkl.global.mkl_rt.SPARSE_DIAG_NON_UNIT;
 import static org.bytedeco.mkl.global.mkl_rt.SPARSE_FILL_MODE_FULL;
 import static org.bytedeco.mkl.global.mkl_rt.SPARSE_FILL_MODE_LOWER;
@@ -74,6 +73,12 @@ public class Matrix implements Serializable {
 		this.array = matrix.array.clone();
 	}
 
+	/**
+	 * Perform dense matrix computation C = A * B
+	 * 
+	 * @param matrix B
+	 * @return Matrix C
+	 */
 	public Matrix multiply(Matrix matrix) {
 		assert matrix.row == this.col : "Matrix Multiplication: size incorrect!";
 		Matrix res = new Matrix(this.row, matrix.col);
@@ -82,6 +87,12 @@ public class Matrix implements Serializable {
 		return res;
 	}
 
+	/**
+	 * Perform dense matrix computation C = A' * B
+	 * 
+	 * @param matrix B
+	 * @return matrix C
+	 */
 	public Matrix transposeMultiply(Matrix matrix) {
 		assert this.row == matrix.row : "Matrix Multiplication: size incorrect!";
 		double[] res = new double[this.col * matrix.col];
@@ -90,6 +101,12 @@ public class Matrix implements Serializable {
 		return new Matrix(res, this.col, matrix.col);
 	}
 
+	/**
+	 * Perform dense matrix computation C = A * B'
+	 * 
+	 * @param matrix B
+	 * @return matrix C
+	 */
 	public Matrix multiplyTranspose(Matrix matrix) {
 		assert this.col == matrix.col : "Matrix Multiplication: size incorrect!";
 		double[] res = new double[this.row * matrix.row];
@@ -98,7 +115,14 @@ public class Matrix implements Serializable {
 		return new Matrix(res, this.row, matrix.row);
 	}
 
-	public Matrix sparseMultiplyDense(Matrix matrix) {
+	/**
+	 * Perform sparse diagonal matrix computation C = A * B, where A is a sparse
+	 * matrix that only has diagonal unit.
+	 * 
+	 * @param matrix B
+	 * @return matrix C
+	 */
+	public Matrix sparseDiagonalMultiplyDense(Matrix matrix) {
 		try {
 			return sparseMultiplyDense(matrix, SPARSE_MATRIX_TYPE_DIAGONAL, SPARSE_FILL_MODE_FULL,
 					SPARSE_DIAG_NON_UNIT);
@@ -108,6 +132,17 @@ public class Matrix implements Serializable {
 		return matrix;
 	}
 
+	/**
+	 * Perform sparse matrix computation C = A * B, where A is a sparse matrix of
+	 * specified type, mode and diag.
+	 * 
+	 * @param matrix B
+	 * @param type
+	 * @param mode
+	 * @param diag
+	 * @return matrix C
+	 * @throws MatrixComputationErrorException
+	 */
 	public Matrix sparseMultiplyDense(Matrix matrix, int type, int mode, int diag)
 			throws MatrixComputationErrorException { // this: sparse, matrix: dense
 		assert this.col == matrix.row : "Matrix Multiplication: size incorrect!";
@@ -118,10 +153,8 @@ public class Matrix implements Serializable {
 				csr.colIndex, csr.values);
 		if (resCSR != SPARSE_STATUS_SUCCESS)
 			throw new MatrixComputationErrorException("mkl_sparse_d_create_csr: Error " + resCSR);
-
 		// Analyze sparse matrix; choose proper kernels and workload balancing strategy
-		// mkl_sparse_optimize (D);
-
+		// mkl_sparse_optimize(D);
 		matrix_descr descr = new matrix_descr();
 		descr.type(type).mode(mode).diag(diag);
 		int resMultiply = mkl_sparse_d_mm(SPARSE_OPERATION_NON_TRANSPOSE, 1.0, D, descr, SPARSE_LAYOUT_ROW_MAJOR,
@@ -133,6 +166,12 @@ public class Matrix implements Serializable {
 		return new Matrix(res, this.row, matrix.col);
 	}
 
+	/**
+	 * CSR format reference:
+	 * https://software.intel.com/content/www/us/en/develop/documentation/mkl-
+	 * developer-reference-c/top/appendix-a-linear-solvers-basics/sparse-matrix-
+	 * storage-formats/sparse-blas-csr-matrix-storage-format.html
+	 */
 	public static class CSR {
 		DoublePointer values;
 		IntPointer rowsStart;
@@ -174,16 +213,15 @@ public class Matrix implements Serializable {
 			System.arraycopy(colIndex, 0, newColIndex, 0, ciIndex);
 			this.colIndex = new IntPointer(newColIndex);
 		}
-
-		public void free() {
-			MKL_free(this.values);
-			MKL_free(this.rowsStart);
-			MKL_free(this.rowsEnd);
-			MKL_free(this.colIndex);
-		}
 	}
 	// TO DO: Sparse-Sparse Matrix Multiplication
 
+	/**
+	 * Inverse a square matrix
+	 * 
+	 * @return the matrix that is inversed
+	 * @throws MatrixComputationErrorException
+	 */
 	public Matrix inverse() throws MatrixComputationErrorException {
 		int result;
 		assert this.row == this.col : "Matrix Inverse: not a square matrix";
@@ -207,6 +245,12 @@ public class Matrix implements Serializable {
 		return matrix;
 	}
 
+	/**
+	 * Matrix element-wise multiply a constant.
+	 * 
+	 * @param d
+	 * @return the new Matrix that is multiplied.
+	 */
 	public Matrix multiply(double d) {
 		for (int i = 0; i < row * col; i++) {
 			this.array[i] *= d;
@@ -214,6 +258,12 @@ public class Matrix implements Serializable {
 		return this;
 	}
 
+	/**
+	 * Matrix element-wise divide a constant.
+	 * 
+	 * @param d
+	 * @return the new Matrix that is divided.
+	 */
 	public Matrix divide(double d) {
 		assert d != 0 : "Cannot Divide By 0!";
 		for (int i = 0; i < row * col; i++) {
@@ -222,11 +272,17 @@ public class Matrix implements Serializable {
 		return this;
 	}
 
+	/**
+	 * Output the matrix
+	 * 
+	 * @param howMany
+	 * @param s
+	 */
 	public void showMatrix(int howMany, String s) {
 		System.out.println("Show Matrix: Size: " + this.row + "*" + this.col + s);
 		for (int i = 0; i < Math.min(this.row, howMany); i++) {
 			for (int j = 0; j < Math.min(this.col, howMany); j++) {
-				System.out.printf("%12.5G", this.array[i * this.col + j]);
+				System.out.printf("%12.7G", this.array[i * this.col + j]);
 			}
 			System.out.print("\n");
 		}
@@ -304,7 +360,7 @@ public class Matrix implements Serializable {
 	public static void main(String[] args) throws Exception {
 
 		Random rand = new Random();
-		int a = 238;
+		int a = 6000;
 		int b = 1;
 
 		double[] cc = new double[a * a];
@@ -313,12 +369,12 @@ public class Matrix implements Serializable {
 		}
 
 		Matrix c = new Matrix(cc, a, a);
-		c.showMatrix();
+		// c.showMatrix();
 
 		long startTime = System.nanoTime();
 		for (int i = 0; i < b; i++) {
 			// c.inverse().multiply(c);
-			c.multiply(c).showMatrix();
+			c.multiply(c).showMatrix(10, "");
 			;
 		}
 		long endTime = System.nanoTime();
@@ -328,7 +384,7 @@ public class Matrix implements Serializable {
 		startTime = System.nanoTime();
 		for (int i = 0; i < b; i++) {
 			c.sparseMultiplyDense(c, SPARSE_MATRIX_TYPE_DIAGONAL, SPARSE_FILL_MODE_LOWER, SPARSE_DIAG_NON_UNIT)
-					.showMatrix();
+					.showMatrix(10, "");
 			;
 		}
 		endTime = System.nanoTime();
@@ -337,7 +393,7 @@ public class Matrix implements Serializable {
 
 		System.out.println(Numerical.computeVarianceUsingMKLSparseRoutine1(c, c, c));
 
-		c.sparseMultiplyDense(c).outputWholeMatrixToTestFile("ddd", "niubi");
+		// c.sparseDiagonalMultiplyDense(c).outputWholeMatrixToTestFile("ddd", "niubi");
 
 	}
 
