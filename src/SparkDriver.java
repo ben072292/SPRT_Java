@@ -23,8 +23,8 @@ public class SparkDriver implements Serializable {
 
 	public static void main(String[] args) {
 		// configure spark
-		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[4]")
-				.set("spark.executor.memory", "2g");
+		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[16]")
+				.set("spark.executor.memory", "4g");
 		sc = new JavaSparkContext(sparkConf);
 
 		// load configuration and predefined data
@@ -65,7 +65,7 @@ public class SparkDriver implements Serializable {
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 
 		// Continue reading till reaching the K-th scan
-		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
+		for (scanNumber = 2; scanNumber <= config.ROW; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
 			BOLDPath = config.assemblyBOLDPath(scanNumber);
 			volume = volumeReader.readFile(BOLDPath, scanNumber);
@@ -79,19 +79,11 @@ public class SparkDriver implements Serializable {
 				.println(new Date() + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
 		System.out.println("---------------------------------------------------------------------------");
 
-		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
+		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset());
 
 		for (scanNumber = config.K + 1; scanNumber <= config.ROW; scanNumber++) {
-			System.out.println("Reading Scan " + scanNumber);
-			BOLDPath = config.assemblyBOLDPath(scanNumber);
-			volume = volumeReader.readFile(BOLDPath, scanNumber);
 
-			dataset.addOneScan(volume);
-			System.out.println("---------------------------------------------------------------------------");
-			System.out.println(new Date() + ": Round " + scanNumber + ": Initializing broadcast variables");
-			System.out.println("---------------------------------------------------------------------------");
-
-			X = designMatrix.toMatrix(scanNumber);
+			X = designMatrix.toMatrix(config.ROW);
 
 			Matrix XTXInverse = Numerical.computeXTXInverse(X);
 			Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
@@ -110,27 +102,6 @@ public class SparkDriver implements Serializable {
 			Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
 			// Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
 			Broadcast<double[]> broadcastH = sc.broadcast(H);
-
-			// Spark logic
-			// 1.1 Parallelize newly added scan
-			JavaRDD<DistributedDataset> newDistributedDataset = sc.parallelize(dataset.toDistrbutedDataset(scanNumber));
-
-			// 1.2 Zip up newly added scan to existing scans
-			JavaPairRDD<DistributedDataset, DistributedDataset> pairedDataset = distributedDataset
-					.zip(newDistributedDataset);
-
-			// 1.3 Using map() to flatten.
-			distributedDataset = pairedDataset
-					.map(new Function<Tuple2<DistributedDataset, DistributedDataset>, DistributedDataset>() {
-
-						@Override
-						public DistributedDataset call(Tuple2<DistributedDataset, DistributedDataset> v1)
-								throws Exception {
-							return new DistributedDataset(
-									ArrayUtils.add(v1._1.getBoldResponse(), v1._2.getBoldResponse()[0]), v1._1);
-						}
-
-					});
 
 			// 2. Perform computation
 			System.out.println("---------------------------------------------------------------------------");
