@@ -23,8 +23,8 @@ public class SparkDriver implements Serializable {
 
 	public static void main(String[] args) {
 		// configure spark
-		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[4]")
-				.set("spark.executor.memory", "2g");
+		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[16]")
+				.set("spark.executor.memory", "4g");
 		sc = new JavaSparkContext(sparkConf);
 
 		// load configuration and predefined data
@@ -79,7 +79,7 @@ public class SparkDriver implements Serializable {
 				.println(new Date() + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
 		System.out.println("---------------------------------------------------------------------------");
 
-		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
+		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset());
 
 		for (scanNumber = config.K + 1; scanNumber <= config.ROW; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
@@ -110,27 +110,25 @@ public class SparkDriver implements Serializable {
 			Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
 			// Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
 			Broadcast<double[]> broadcastH = sc.broadcast(H);
+			Broadcast<Brain> broadcastVolume = sc.broadcast(volume);
 
 			// Spark logic
-			// 1.1 Parallelize newly added scan
-			JavaRDD<DistributedDataset> newDistributedDataset = sc.parallelize(dataset.toDistrbutedDataset(scanNumber));
+			// 1. add new scan to distributedDataset
 
-			// 1.2 Zip up newly added scan to existing scans
-			JavaPairRDD<DistributedDataset, DistributedDataset> pairedDataset = distributedDataset
-					.zip(newDistributedDataset);
+			// Not sure broadcast new brain volume would be a good way.
+			// Might cause performance issue.
+			distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>() {
 
-			// 1.3 Using map() to flatten.
-			distributedDataset = pairedDataset
-					.map(new Function<Tuple2<DistributedDataset, DistributedDataset>, DistributedDataset>() {
+				public DistributedDataset call(DistributedDataset distributedDataset) {
+					return new DistributedDataset(
+							ArrayUtils
+									.add(distributedDataset.getBoldResponse(),
+											broadcastVolume.value().getVoxel(distributedDataset.getX(),
+													distributedDataset.getY(), distributedDataset.getZ())),
+							distributedDataset);
+				}
 
-						@Override
-						public DistributedDataset call(Tuple2<DistributedDataset, DistributedDataset> v1)
-								throws Exception {
-							return new DistributedDataset(
-									ArrayUtils.add(v1._1.getBoldResponse(), v1._2.getBoldResponse()[0]), v1._1);
-						}
-
-					});
+			});
 
 			// 2. Perform computation
 			System.out.println("---------------------------------------------------------------------------");
