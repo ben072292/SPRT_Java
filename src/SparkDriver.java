@@ -5,7 +5,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.*;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.broadcast.Broadcast;
 
 /**
@@ -49,6 +49,27 @@ public class SparkDriver implements Serializable {
 
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 
+		// Broadcasting global data for bootstrapping
+		X = designMatrix.toMatrix(scanNumber);
+		Matrix XTXInverse = Numerical.computeXTXInverse(X);
+		Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
+		Matrix XXTXInverse = X.multiply(XTXInverse);
+		double[] CTXTXInverseC = new double[C.getRow()];
+		for (int i = 0; i < C.getRow(); i++) {
+			Matrix c = C.getRowSlice(i);
+			CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get();
+		}
+		double[] H = Numerical.computeH(XXTXInverse, X);
+
+		// Create Spark shared variables
+		Broadcast<Matrix> broadcastXComplete = sc.broadcast(X);
+		// Broadcast<Matrix> broadcastXTXInverseComplete = sc.broadcast(XTXInverse);
+		Broadcast<Matrix> broadcastXTXInverseXTComplete = sc.broadcast(XTXInverseXT);
+		Broadcast<Matrix> broadcastXXTXInverseComplete = sc.broadcast(XXTXInverse);
+		// Broadcast<double[]> broadcastCTXTXInverseCComplete =
+		// sc.broadcast(CTXTXInverseC);
+		Broadcast<double[]> broadcastHComplete = sc.broadcast(H);
+
 		// Continue reading till reaching the K-th scan
 		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
@@ -74,22 +95,22 @@ public class SparkDriver implements Serializable {
 
 			X = designMatrix.toMatrix(scanNumber);
 
-			Matrix XTXInverse = Numerical.computeXTXInverse(X);
-			Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-			Matrix XXTXInverse = X.multiply(XTXInverse);
-			double[] CTXTXInverseC = new double[C.getRow()];
+			XTXInverse = Numerical.computeXTXInverse(X);
+			XTXInverseXT = XTXInverse.multiplyTranspose(X);
+			XXTXInverse = X.multiply(XTXInverse);
+			CTXTXInverseC = new double[C.getRow()];
 			for (int i = 0; i < C.getRow(); i++) {
 				Matrix c = C.getRowSlice(i);
 				CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get();
 			}
-			double[] H = Numerical.computeH(XXTXInverse, X);
+			H = Numerical.computeH(XXTXInverse, X);
 
 			// Create Spark shared variables
 			Broadcast<Matrix> broadcastX = sc.broadcast(X);
 			// Broadcast<Matrix> broadcastXTXInverse = sc.broadcast(XTXInverse);
 			Broadcast<Matrix> broadcastXTXInverseXT = sc.broadcast(XTXInverseXT);
 			Broadcast<Matrix> broadcastXXTXInverse = sc.broadcast(XXTXInverse);
-			//Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
+			// Broadcast<double[]> broadcastCTXTXInverseC = sc.broadcast(CTXTXInverseC);
 			Broadcast<double[]> broadcastH = sc.broadcast(H);
 			Broadcast<Brain> broadcastVolume = sc.broadcast(volume);
 
@@ -126,13 +147,15 @@ public class SparkDriver implements Serializable {
 
 							for (int i = 0; i < broadcastC.value().getRow(); i++) {
 								Matrix c = broadcastC.value().getRowSlice(i);
-								//double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c, broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
+								// double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c,
+								// broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
 								double variance = Numerical.computeVariance(c, broadcastX.value(), D);
 								double cBeta = Numerical.computeCBeta(c, beta);
 								double ZScore = Numerical.computeZ(cBeta, variance);
 								double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
 								double SPRT = Numerical.compute_SPRT(cBeta, config.theta0, theta1, variance);
-								int SPRTActivationStatus = Numerical.computeActivationStatus(SPRT, config.SPRTUpperBound, config.SPRTLowerBound);
+								int SPRTActivationStatus = Numerical.computeActivationStatus(SPRT,
+										config.SPRTUpperBound, config.SPRTLowerBound);
 
 								ret.setVariance(i, variance);
 								ret.setCBeta(i, cBeta);
@@ -170,6 +193,6 @@ public class SparkDriver implements Serializable {
 //			System.out.println(new Date() + ": Round " + scanNumber + ": Retrived");
 		}
 		sc.close();
-		
+
 	}
 }
