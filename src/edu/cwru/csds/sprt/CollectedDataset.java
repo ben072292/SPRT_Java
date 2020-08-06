@@ -1,3 +1,4 @@
+package edu.cwru.csds.sprt;
 import java.io.Serializable;
 
 @SuppressWarnings("serial")

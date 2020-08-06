@@ -1,3 +1,16 @@
+package edu.cwru.csds.sprt;
+
+import static edu.cwru.csds.sprt.Numerical.computeActivationStatus;
+import static edu.cwru.csds.sprt.Numerical.computeBeta2;
+import static edu.cwru.csds.sprt.Numerical.computeCBeta;
+import static edu.cwru.csds.sprt.Numerical.computeH;
+import static edu.cwru.csds.sprt.Numerical.computeR;
+import static edu.cwru.csds.sprt.Numerical.computeVariance;
+import static edu.cwru.csds.sprt.Numerical.computeXTXInverse;
+import static edu.cwru.csds.sprt.Numerical.computeZ;
+import static edu.cwru.csds.sprt.Numerical.compute_SPRT;
+import static edu.cwru.csds.sprt.Numerical.generateD;
+
 import java.io.Serializable;
 import java.util.Date;
 
@@ -51,7 +64,7 @@ public class SparkDriver implements Serializable {
 
 		// Broadcasting global data for bootstrapping
 		X = designMatrix.toMatrix(scanNumber);
-		Matrix XTXInverse = Numerical.computeXTXInverse(X);
+		Matrix XTXInverse = computeXTXInverse(X);
 		Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
 		Matrix XXTXInverse = X.multiply(XTXInverse);
 		double[] CTXTXInverseC = new double[C.getRow()];
@@ -59,7 +72,7 @@ public class SparkDriver implements Serializable {
 			Matrix c = C.getRowSlice(i);
 			CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get();
 		}
-		double[] H = Numerical.computeH(XXTXInverse, X);
+		double[] H = computeH(XXTXInverse, X);
 
 		// Create Spark shared variables
 		Broadcast<Matrix> broadcastXComplete = sc.broadcast(X);
@@ -95,7 +108,7 @@ public class SparkDriver implements Serializable {
 
 			X = designMatrix.toMatrix(scanNumber);
 
-			XTXInverse = Numerical.computeXTXInverse(X);
+			XTXInverse = computeXTXInverse(X);
 			XTXInverseXT = XTXInverse.multiplyTranspose(X);
 			XXTXInverse = X.multiply(XTXInverse);
 			CTXTXInverseC = new double[C.getRow()];
@@ -103,7 +116,7 @@ public class SparkDriver implements Serializable {
 				Matrix c = C.getRowSlice(i);
 				CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get();
 			}
-			H = Numerical.computeH(XXTXInverse, X);
+			H = computeH(XXTXInverse, X);
 
 			// Create Spark shared variables
 			Broadcast<Matrix> broadcastX = sc.broadcast(X);
@@ -139,23 +152,22 @@ public class SparkDriver implements Serializable {
 						public CollectedDataset call(DistributedDataset distributedDataset) {
 							CollectedDataset ret = new CollectedDataset(broadcastC.value().getRow());
 
-							Matrix beta = Numerical.computeBeta2(broadcastXTXInverseXT.value(),
+							Matrix beta = computeBeta2(broadcastXTXInverseXT.value(),
 									distributedDataset.getBoldResponseMatrix());
-							double[] R = Numerical.computeR(distributedDataset.getBoldResponseMatrix(),
-									broadcastX.value(), beta);
-							Matrix D = Numerical.generateD(R, broadcastH.value());
+							double[] R = computeR(distributedDataset.getBoldResponseMatrix(), broadcastX.value(), beta);
+							Matrix D = generateD(R, broadcastH.value());
 
 							for (int i = 0; i < broadcastC.value().getRow(); i++) {
 								Matrix c = broadcastC.value().getRowSlice(i);
-								// double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c,
+								// double variance = computeVarianceUsingMKLSparseRoutine2(c,
 								// broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
-								double variance = Numerical.computeVariance(c, broadcastX.value(), D);
-								double cBeta = Numerical.computeCBeta(c, beta);
-								double ZScore = Numerical.computeZ(cBeta, variance);
+								double variance = computeVariance(c, broadcastX.value(), D);
+								double cBeta = computeCBeta(c, beta);
+								double ZScore = computeZ(cBeta, variance);
 								double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
-								double SPRT = Numerical.compute_SPRT(cBeta, config.theta0, theta1, variance);
-								int SPRTActivationStatus = Numerical.computeActivationStatus(SPRT,
-										config.SPRTUpperBound, config.SPRTLowerBound);
+								double SPRT = compute_SPRT(cBeta, config.theta0, theta1, variance);
+								int SPRTActivationStatus = computeActivationStatus(SPRT, config.SPRTUpperBound,
+										config.SPRTLowerBound);
 
 								ret.setVariance(i, variance);
 								ret.setCBeta(i, cBeta);

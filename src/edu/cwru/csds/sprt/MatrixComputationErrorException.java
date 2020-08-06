@@ -1,3 +1,4 @@
+package edu.cwru.csds.sprt;
 /**
  * Handles all exceptions during matrix computation
  * @author Ben

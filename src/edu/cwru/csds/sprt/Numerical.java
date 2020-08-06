@@ -1,3 +1,4 @@
+package edu.cwru.csds.sprt;
 /**
  * Numerical methods used for SPRT
  * @author Ben

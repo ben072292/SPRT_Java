@@ -1,3 +1,4 @@
+package edu.cwru.csds.sprt;
 // This is a reader to read in a whole brain volume
 
 import java.io.BufferedReader;

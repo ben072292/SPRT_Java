@@ -1,3 +1,4 @@
+package edu.cwru.csds.sprt;
 public class Voxel {
 	
 	private double signal;

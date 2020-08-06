@@ -1,3 +1,4 @@
+package edu.cwru.csds.sprt;
 /**
  * Handles all exceptions in reading/writing files
  * @author Ben
