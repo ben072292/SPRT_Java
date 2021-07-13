@@ -11,12 +11,16 @@ import static edu.cwru.csds.sprt.Numerical.computeZ;
 import static edu.cwru.csds.sprt.Numerical.compute_SPRT;
 import static edu.cwru.csds.sprt.Numerical.generateD;
 
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
 import java.io.Serializable;
 import java.util.Date;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.broadcast.Broadcast;
@@ -32,10 +36,21 @@ public class SparkDriver implements Serializable {
 	private static JavaSparkContext sc;
 
 	public static void main(String[] args) {
+		long start, end;
+		start = System.nanoTime();
+		PrintStream out;
+		try {
+			out = new PrintStream(new FileOutputStream("output.txt"));
+			System.setOut(out);
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
 		// configure spark
-		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[4]")
+		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[16]")
 				.set("spark.executor.memory", "6g");
 		sc = new JavaSparkContext(sparkConf);
+		
+		//JavaSparkContext sc = JavaSparkContext.fromSparkContext(SparkContext.getOrCreate(new SparkConf()));
 
 		// load configuration and predefined data
 		System.out.println("load configuration and predefined data");
@@ -50,7 +65,7 @@ public class SparkDriver implements Serializable {
 
 		// Read in first scan to get some brain volume metadata
 		System.out.println("Read in first scan to get some brain volume metadata");
-		int scanNumber = 1;
+		int scanNumber;
 		String BOLDPath = config.assemblyBOLDPath(1);
 		Brain volume = volumeReader.readFile(BOLDPath, 1);
 		config.setVolumeSize(volume);
@@ -63,7 +78,7 @@ public class SparkDriver implements Serializable {
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 
 		// Broadcasting global data for bootstrapping
-		X = designMatrix.toMatrix(scanNumber);
+		X = designMatrix.toMatrix(config.ROW);
 		Matrix XTXInverse = computeXTXInverse(X);
 		Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
 		Matrix XXTXInverse = X.multiply(XTXInverse);
@@ -159,9 +174,11 @@ public class SparkDriver implements Serializable {
 
 							for (int i = 0; i < broadcastC.value().getRow(); i++) {
 								Matrix c = broadcastC.value().getRowSlice(i);
-								// double variance = computeVarianceUsingMKLSparseRoutine2(c,
-								// broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
-								double variance = computeVariance(c, broadcastX.value(), D);
+								double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c,
+								broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
+								// double variance = Numerical.computeVarianceUsingMKLSparseRoutine1(c,
+								// broadcastX.value(), D);
+								// double variance = computeVariance(c, broadcastX.value(), D);
 								double cBeta = computeCBeta(c, beta);
 								double ZScore = computeZ(cBeta, variance);
 								double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
@@ -205,6 +222,8 @@ public class SparkDriver implements Serializable {
 //			System.out.println(new Date() + ": Round " + scanNumber + ": Retrived");
 		}
 		sc.close();
+		end = System.nanoTime();
+		System.out.println("Total Time Consumption: " + (end-start)/1e9 + " seconds.");
 
 	}
 }

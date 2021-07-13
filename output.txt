@@ -1,0 +1,4 @@
+load configuration and predefined data
+Complete
+Read in first scan to get some brain volume metadata
+Complete

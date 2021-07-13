@@ -2,11 +2,9 @@ package edu.cwru.csds.sprt;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
-import org.spark_project.guava.primitives.Doubles;
+import com.google.common.primitives.Doubles;
 
 /**
  * Processes single bold response file
