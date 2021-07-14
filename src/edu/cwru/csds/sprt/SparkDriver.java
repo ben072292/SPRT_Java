@@ -46,8 +46,8 @@ public class SparkDriver implements Serializable {
 			e.printStackTrace();
 		}
 		// configure spark
-		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[16]")
-				.set("spark.executor.memory", "6g");
+		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[2]")
+				.set("spark.executor.memory", "32g");
 		sc = new JavaSparkContext(sparkConf);
 		
 		//JavaSparkContext sc = JavaSparkContext.fromSparkContext(SparkContext.getOrCreate(new SparkConf()));

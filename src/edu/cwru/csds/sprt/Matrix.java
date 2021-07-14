@@ -77,7 +77,7 @@ public class Matrix implements Serializable{
 	
 	public Matrix sparseMultiplyDense (Matrix matrix) {
 		try {
-			return sparseMultiplyDense(matrix, SPARSE_MATRIX_TYPE_DIAGONAL, SPARSE_FILL_MODE_FULL, SPARSE_DIAG_NON_UNIT);
+			return sparseMultiplyDense(matrix, SPARSE_MATRIX_TYPE_DIAGONAL, SPARSE_FILL_MODE_LOWER, SPARSE_DIAG_NON_UNIT);
 		} catch (MatrixComputationErrorException e) {
 			e.printStackTrace();
 		}
@@ -100,7 +100,9 @@ public class Matrix implements Serializable{
 		int resMultiply = mkl_sparse_d_mm(SPARSE_OPERATION_NON_TRANSPOSE, 1.0, D, descr, SPARSE_LAYOUT_ROW_MAJOR, matrix.array, matrix.col, matrix.col, 0.0, res, matrix.col);
 		if(resMultiply != SPARSE_STATUS_SUCCESS) throw new MatrixComputationErrorException("mkl_sparse_d_mm: Error " + resMultiply);
 		
-		//mkl_sparse_destroy(D);
+		mkl_sparse_destroy(D);
+		csr.free();
+		descr.deallocate();
 		return new Matrix(res, this.row, matrix.col);
 	}
 	
@@ -122,7 +124,7 @@ public class Matrix implements Serializable{
 			int rowCounter = 0;
 			for(int i = 0; i < matrix.row; i++) {
 				for(int j = 0; j < matrix.col; j++) {
-					if(matrix.get(i, j) != 0) {
+					if(matrix.get(i, j) != 0.0) {
 						values[valsIndex++] = matrix.get(i, j);
 						colIndex[ciIndex++] = j;
 						rowCounter++;
@@ -130,21 +132,26 @@ public class Matrix implements Serializable{
 				}
 				rowsIndex[rsIndex++] = rowCounter;
 			}
-			double[] newValues = new double[--valsIndex];
-			System.arraycopy(values, 0, newValues, 0, valsIndex);
-			this.values = new DoublePointer(newValues);
+
+			this.values = new DoublePointer(MKL_malloc((valsIndex) * Double.BYTES, 64));
+			for(int i = 0; i < valsIndex; i++){
+				this.values.put(i, values[i]);
+			}
 			
-			int[] rowsStart = new int[matrix.row];
-			System.arraycopy(rowsIndex, 0, rowsStart, 0, matrix.row);
-			this.rowsStart = new IntPointer(rowsStart);
+			this.rowsStart = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 64));
+			for(int i = 0; i < matrix.row; i++){
+				this.rowsStart.put(i, rowsIndex[i]);
+			}
 			
-			int[] rowsEnd = new int[matrix.row];
-			System.arraycopy(rowsIndex, 1, rowsEnd, 0, matrix.row);
-			this.rowsEnd = new IntPointer(rowsEnd);
-			
-			int[] newColIndex = new int[--ciIndex];
-			System.arraycopy(colIndex, 0, newColIndex, 0, ciIndex);
-			this.colIndex = new IntPointer(newColIndex);
+			this.rowsEnd = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 64));
+			for(int i = 0; i < matrix.row; i++){
+				this.rowsEnd.put(i, rowsIndex[i+1]);
+			}
+
+			this.colIndex = new IntPointer(MKL_malloc((ciIndex) * Integer.BYTES, 64));
+			for(int i = 0; i < ciIndex; i++){
+				this.colIndex.put(i, colIndex[i]);
+			}
 		}
 		
 		public void free() {
@@ -197,6 +204,10 @@ public class Matrix implements Serializable{
 		}
 		System.out.println();
 		
+	}
+
+	public void showMatrix(int howMany){
+		showMatrix(howMany, "");
 	}
 	
 	public void outputWholeMatrixToTestFile(String filename, String descr) {
@@ -270,22 +281,30 @@ public class Matrix implements Serializable{
 	public static void main(String[] args) throws Exception {
         
         Random rand = new Random();
-        int a = 10000;
+        int a = 5;
         int b = 1;
         
         double[] cc = new double[a*a];
         for(int i = 0; i < a; i++) {
         	cc[i*a+i] = rand.nextDouble();
         }
+
+		double[] ccc = new double[a*a];
+		for(int i = 0; i < a; i++){
+			for (int j = 0; j < a; j++){
+				ccc[i*a+j] = rand.nextDouble();
+			}
+		}
         
         Matrix c = new Matrix(cc, a, a);
-        c.showMatrix();
+        //c.showMatrix();
+		Matrix bb = new Matrix(ccc, a, a);
         
         
         long startTime = System.nanoTime();
         for(int i = 0; i < b; i++) {
         	//c.inverse().multiply(c);
-        	c.multiply(c).showMatrix();;
+        	c.multiply(bb).showMatrix();;
         }
         long endTime = System.nanoTime();
         long timeElapsed = endTime - startTime;
@@ -293,15 +312,15 @@ public class Matrix implements Serializable{
         
         startTime = System.nanoTime();
         for(int i = 0; i < b; i++) {
-            c.sparseMultiplyDense(c, SPARSE_MATRIX_TYPE_DIAGONAL, SPARSE_FILL_MODE_LOWER, SPARSE_DIAG_NON_UNIT).showMatrix();;
+            c.sparseMultiplyDense(bb, SPARSE_MATRIX_TYPE_DIAGONAL, SPARSE_FILL_MODE_LOWER, SPARSE_DIAG_NON_UNIT).showMatrix();;
         }
         endTime = System.nanoTime();
         timeElapsed = endTime - startTime;
         System.out.println("2: Execution time in milliseconds: " + timeElapsed / 1e6);
         
-        System.out.println(Numerical.computeVarianceUsingMKLSparseRoutine1(c, c, c));
+        //System.out.println(Numerical.computeVarianceUsingMKLSparseRoutine1(c, c, c));
         
-        c.sparseMultiplyDense(c).outputWholeMatrixToTestFile("ddd", "niubi");
+        //c.sparseMultiplyDense(c).outputWholeMatrixToTestFile("ddd", "niubi");
         
 	}
 	
