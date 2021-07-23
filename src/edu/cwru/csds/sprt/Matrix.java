@@ -275,6 +275,14 @@ public class Matrix implements Serializable{
 		}
 		return new Matrix(arr, this.getRow(), 1);
 	}
+
+	public Matrix getFirstNumberOfRows(int number){
+		double[] arr = new double[number * this.getCol()];
+		for(int i = 0; i < arr.length; i++){
+			arr[i] = this.array[i];
+		}
+		return new Matrix(arr, number, this.getCol());
+	}
 	
 	
 	

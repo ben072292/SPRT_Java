@@ -33,11 +33,9 @@ import org.apache.spark.broadcast.Broadcast;
  */
 @SuppressWarnings("serial")
 public class SparkDriver implements Serializable {
-	private static JavaSparkContext sc;
 
 	public static void main(String[] args) {
 		long start, end;
-		start = System.nanoTime();
 		PrintStream out;
 		try {
 			out = new PrintStream(new FileOutputStream("output.txt"));
@@ -46,11 +44,11 @@ public class SparkDriver implements Serializable {
 			e.printStackTrace();
 		}
 		// configure spark
-		SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[2]")
-				.set("spark.executor.memory", "32g");
-		sc = new JavaSparkContext(sparkConf);
+		// SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[2]")
+		// 		.set("spark.executor.memory", "32g");
+		// sc = new JavaSparkContext(sparkConf);
 		
-		//JavaSparkContext sc = JavaSparkContext.fromSparkContext(SparkContext.getOrCreate(new SparkConf()));
+		JavaSparkContext sc = JavaSparkContext.fromSparkContext(SparkContext.getOrCreate(new SparkConf()));
 
 		// load configuration and predefined data
 		System.out.println("load configuration and predefined data");
@@ -108,11 +106,11 @@ public class SparkDriver implements Serializable {
 		// System.out.println(dataset.getVolume(config.K));
 
 		// Prepare
-		System.out
-				.println(new Date() + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
+		System.out.println(new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
 
 		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset()).cache();
 
+		start = System.nanoTime();
 		for (scanNumber = config.K + 1; scanNumber <= config.ROW; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
 			BOLDPath = config.assemblyBOLDPath(scanNumber);
