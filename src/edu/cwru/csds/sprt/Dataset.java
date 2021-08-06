@@ -2,6 +2,7 @@ package edu.cwru.csds.sprt;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Random;
 
 /**
  * Stores and handles data read from bold response files
@@ -63,6 +64,7 @@ public class Dataset implements Serializable {
 	
 	public ArrayList<DistributedDataset> toDistrbutedDataset(){
 		ArrayList<DistributedDataset> ret = new ArrayList<>(this.x * this.y * this.z);
+		Random rand = new Random();
 		for(int x = 0; x < this.x; x++) {
 			for(int y = 0; y < this.y; y++) {
 				for(int z = 0; z < this.z; z++) {
@@ -73,7 +75,7 @@ public class Dataset implements Serializable {
 					else{
 						double[] a = getBoldResponseAsArray(x, y, z);
 						for(int i = 0; i < a.length; i++){
-							a[i] += 0.02;
+							a[i] = rand.nextDouble();
 						}
 						ret.add(new DistributedDataset(a, x, y, z, pos, true));
 					}

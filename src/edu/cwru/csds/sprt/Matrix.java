@@ -22,12 +22,14 @@ public class Matrix implements Serializable{
 	private int col;
 	
 	public Matrix(int row, int col){
+		MKL_Set_Num_Threads(1);
 		this.row = row;
 		this.col = col;
 		this.array = new double[row * col];
 	}
 	
 	public Matrix(double[] array, int row, int col) {
+		MKL_Set_Num_Threads(1);
 		assert(array.length == row * col) : "Matrix defined size not match the array";
 		this.row = row;
 		this.col = col;
@@ -35,6 +37,7 @@ public class Matrix implements Serializable{
 	}
 	
 	public Matrix(int[] array, int row, int col) {
+		MKL_Set_Num_Threads(1);
 		assert(array.length == row * col) : "Matrix defined size not match the array";
 		this.row = row;
 		this.col = col;
@@ -46,6 +49,7 @@ public class Matrix implements Serializable{
 	}
 	
 	public Matrix(Matrix matrix) {
+		MKL_Set_Num_Threads(1);
 		this.row = matrix.row;
 		this.col = matrix.col;
 		this.array = matrix.array.clone();
@@ -82,6 +86,16 @@ public class Matrix implements Serializable{
 			e.printStackTrace();
 		}
 		return matrix;
+	}
+
+	public Matrix diagnalMultiplyDense (Matrix matrix) {
+		double[] res = new double[this.row * matrix.col];
+		for(int i = 0; i < this.row; i++){
+			for(int j = 0; j < matrix.col; j++){
+				res[i*matrix.col+j] = matrix.get(i, j) * this.get(i, i);
+			}
+		}
+		return new Matrix(res, this.row, matrix.col);
 	}
 	
 	public Matrix sparseMultiplyDense (Matrix matrix, int type, int mode, int diag) throws MatrixComputationErrorException { // this: sparse, matrix: dense
@@ -289,7 +303,7 @@ public class Matrix implements Serializable{
 	public static void main(String[] args) throws Exception {
         
         Random rand = new Random();
-        int a = 5;
+        int a = 10000;
         int b = 1;
         
         double[] cc = new double[a*a];

@@ -173,7 +173,7 @@ public class Test implements Serializable {
 
 							for (int i = 0; i < broadcastC.value().getRow(); i++) {
 								Matrix c = broadcastC.value().getRowSlice(i);
-								// double variance = Numerical.computeVarianceUsingMKLSparseRoutine2(c,
+								// double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
 								// broadcastXTXInverseXT.value(), broadcastXXTXInverse.value(), D);
 								// double variance = Numerical.computeVarianceUsingMKLSparseRoutine1(c,
 								// broadcastX.value(), D);

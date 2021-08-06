@@ -19,6 +19,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.SparkContext;
@@ -33,9 +34,10 @@ import org.apache.spark.broadcast.Broadcast;
  *
  */
 @SuppressWarnings("serial")
-public class SparkDriverOfflineAnalysis implements Serializable {
+public class SparkDriverBatchAnalysis implements Serializable {
 
 	public static void main(String[] args) {
+		int batchSize = Integer.parseInt(args[0]);
 		long start, end;
 		PrintStream out;
 		try {
@@ -76,52 +78,14 @@ public class SparkDriverOfflineAnalysis implements Serializable {
 
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 
-		// Broadcasting global data for bootstrapping
-        start = System.nanoTime();
         ArrayList<Matrix> designMatrixList = new ArrayList<>();
         //ArrayList<Matrix> XTXInverseList = new ArrayList<>();
         ArrayList<Matrix> XTXInverseXTList = new ArrayList<>();
         ArrayList<Matrix> XXTXInverseList = new ArrayList<>();
         ArrayList<double[]> HList = new ArrayList<>();
 
-        for(int i = 0; i < config.K-1; i++){
-            designMatrixList.add(null);
-            //XTXInverseList.add(null);
-            XTXInverseXTList.add(null);
-            XXTXInverseList.add(null);
-            HList.add(null);
-        }
-
-        for(int i = config.K; i <= config.ROW; i++){
-            X = designMatrix.toMatrix(i);
-		    Matrix XTXInverse = computeXTXInverse(X);
-		    Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-		    Matrix XXTXInverse = X.multiply(XTXInverse);
-		    double[] CTXTXInverseC = new double[C.getRow()];
-		    for (int j = 0; j < C.getRow(); j++) {
-			    Matrix c = C.getRowSlice(j);
-			    CTXTXInverseC[j] = c.transposeMultiply(XTXInverse).multiply(c).get();
-		    }
-		    double[] H = computeH(XXTXInverse, X);
-            designMatrixList.add(X);
-            //XTXInverseList.add(XTXInverse);
-            XTXInverseXTList.add(XTXInverseXT);
-            XXTXInverseList.add(XXTXInverse);
-            HList.add(H);
-        }
-        end = System.nanoTime();
-        System.out.println("Construct Pre-defined Values Took " + (end-start)/1e9 + " Seconds");
-		
-
-		// Create Spark shared variables
-		Broadcast<ArrayList<Matrix>> broadcastDesignMatrixList = sc.broadcast(designMatrixList);
-        //Broadcast<ArrayList<Matrix>> broadcastXTXInverseList = sc.broadcast(XTXInverseList);
-        Broadcast<ArrayList<Matrix>> broadcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
-        Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
-        Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
-
 		// Continue reading till reaching the K-th scan
-		for (scanNumber = 2; scanNumber <= config.ROW; scanNumber++) {
+		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
 			BOLDPath = config.assemblyBOLDPath(scanNumber);
 			volume = volumeReader.readFile(BOLDPath, scanNumber);
@@ -136,16 +100,71 @@ public class SparkDriverOfflineAnalysis implements Serializable {
 
 		start = System.nanoTime();
 
-        JavaRDD<ArrayList<CollectedDataset>> collectedDatasets = distributedDataset
+		while(scanNumber <= config.ROW){
+			int currentScanNumber = scanNumber;
+			designMatrixList.clear();
+			//XTXInverseList.clear();
+			XTXInverseXTList.clear();
+			XXTXInverseList.clear();
+			HList.clear();
+			Broadcast<Integer> broadcastStartScanNumber = sc.broadcast(scanNumber);
+			Broadcast<Integer> broadcastEndScanNumber = sc.broadcast(Math.min(scanNumber+batchSize, config.ROW));
+
+			ArrayList<Brain> volumes = new ArrayList<>();
+			volumes.clear();
+			for(; currentScanNumber < scanNumber+batchSize && currentScanNumber <= config.ROW; currentScanNumber++){
+				BOLDPath = config.assemblyBOLDPath(currentScanNumber);
+				volumes.add(volumeReader.readFile(BOLDPath, currentScanNumber));
+
+				X = designMatrix.toMatrix(currentScanNumber);
+		    	Matrix XTXInverse = computeXTXInverse(X);
+		    	Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
+		    	Matrix XXTXInverse = X.multiply(XTXInverse);
+		    	double[] CTXTXInverseC = new double[C.getRow()];
+		    	for (int j = 0; j < C.getRow(); j++) {
+				    Matrix c = C.getRowSlice(j);
+				    CTXTXInverseC[j] = c.transposeMultiply(XTXInverse).multiply(c).get();
+		    	}
+		    	double[] H = computeH(XXTXInverse, X);
+            	designMatrixList.add(X);
+            	//XTXInverseList.add(XTXInverse);
+            	XTXInverseXTList.add(XTXInverseXT);
+            	XXTXInverseList.add(XXTXInverse);
+            	HList.add(H);
+			}
+			
+			Broadcast<ArrayList<Brain>> broadcastVolumes = sc.broadcast(volumes);
+			
+			distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>() {
+
+				public DistributedDataset call(DistributedDataset distributedDataset) {
+						for(int i = 0; i < broadcastVolumes.value().size(); i++){
+							distributedDataset = new DistributedDataset(ArrayUtils.add(distributedDataset.getBoldResponse(),
+											broadcastVolumes.value().get(i).getVoxel(distributedDataset.getX(),
+													distributedDataset.getY(), distributedDataset.getZ())),
+							distributedDataset);
+						}
+						return distributedDataset;
+				}
+
+			});
+
+			Broadcast<ArrayList<Matrix>> broadcastDesignMatrixList = sc.broadcast(designMatrixList);
+        	//Broadcast<ArrayList<Matrix>> broadcastXTXInverseList = sc.broadcast(XTXInverseList);
+        	Broadcast<ArrayList<Matrix>> broadcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
+        	Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
+        	Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
+			Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(HList.size());
+
+
+			JavaRDD<ArrayList<CollectedDataset>> collectedDatasets = distributedDataset
 					.map(new Function<DistributedDataset, ArrayList<CollectedDataset>>() {
 						public ArrayList<CollectedDataset> call(DistributedDataset distributedDataset) {
 							MKL_Set_Num_Threads(1);
 							ArrayList<CollectedDataset> ret = new ArrayList<>();
-                            for(int i = broadcastConfig.value().K-1; i < broadcastConfig.value().ROW; i++){
-                                double[] boldResponseRaw = new double[i+1];
-                                for(int j=0; j <= i; j++){
-                                    boldResponseRaw[j] = distributedDataset.getBoldResponse()[j];
-                                }
+                            for(int i = 0; i < broadcastRealBatchSize.value(); i++){
+                                double[] boldResponseRaw = new double[broadcastStartScanNumber.value() + i];
+                                System.arraycopy(distributedDataset.getBoldResponse(), 0, boldResponseRaw, 0, broadcastStartScanNumber.value() + i);
                                 Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
                                 // Matrix X = broadcastXComplete.value().getFirstNumberOfRows(i+1);
 
@@ -222,6 +241,11 @@ public class SparkDriverOfflineAnalysis implements Serializable {
             for(int i : activationCounter){
                 System.out.println(new Date() + ": " + i);
             }
+
+			scanNumber = currentScanNumber;
+
+		}
+
 		sc.close();
 		end = System.nanoTime();
 		System.out.println("Total Time Consumption: " + (end-start)/1e9 + " seconds.");

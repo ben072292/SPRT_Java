@@ -15,6 +15,8 @@ public class DistributedDataset implements Serializable {
 	private int z;
 	private int id;
 	private boolean withinROI;
+
+	public DistributedDataset(){}
 	
 	public DistributedDataset(double[] boldResponse, int x, int y, int z, int id, boolean withinROI) {
 		this.boldResponse = boldResponse;

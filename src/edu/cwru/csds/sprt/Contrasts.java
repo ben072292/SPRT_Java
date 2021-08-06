@@ -3,6 +3,7 @@ import java.util.List;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Scanner;
@@ -12,7 +13,7 @@ import java.util.Scanner;
  * @author Ben
  *
  */
-public class Contrasts {
+public class Contrasts implements Serializable{
 	private int contrastLength = 0;
 	private int numOfContrasts = 0;
 	private int[][] contrasts;
@@ -86,7 +87,7 @@ public class Contrasts {
 	}
 	
 	public Matrix toMatrix() {
-		int[] arr = new int[this.numOfContrasts * this.contrastLength];
+		double[] arr = new double[this.numOfContrasts * this.contrastLength];
 		for(int i = 0; i < this.numOfContrasts; i++) {
 			for(int j = 0; j <this.contrastLength; j++) {
 				arr[i*this.contrastLength+j] = this.contrasts[i][j];

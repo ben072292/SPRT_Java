@@ -80,6 +80,10 @@ public class Numerical {
 		return c.multiply(XTXInverseXT).multiply(D.sparseMultiplyDense(XXTXInverse)).multiplyTranspose(c).get();
 	}
 
+	public static double computeVarianceUsingMKLSparseRoutine3(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse, Matrix D) {
+		return c.multiply(XTXInverseXT).multiply(D.diagnalMultiplyDense(XXTXInverse)).multiplyTranspose(c).get();
+	}
+
 	
 	/*
 	 * Output: SPRT result
