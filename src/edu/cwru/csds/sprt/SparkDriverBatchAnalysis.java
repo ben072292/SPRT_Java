@@ -1,15 +1,6 @@
 package edu.cwru.csds.sprt;
 
-import static edu.cwru.csds.sprt.Numerical.computeActivationStatus;
-import static edu.cwru.csds.sprt.Numerical.computeBeta2;
-import static edu.cwru.csds.sprt.Numerical.computeCBeta;
-import static edu.cwru.csds.sprt.Numerical.computeH;
-import static edu.cwru.csds.sprt.Numerical.computeR;
-import static edu.cwru.csds.sprt.Numerical.computeVariance;
-import static edu.cwru.csds.sprt.Numerical.computeXTXInverse;
-import static edu.cwru.csds.sprt.Numerical.computeZ;
-import static edu.cwru.csds.sprt.Numerical.compute_SPRT;
-import static edu.cwru.csds.sprt.Numerical.generateD;
+import static edu.cwru.csds.sprt.Numerical.*;
 import static org.bytedeco.mkl.global.mkl_rt.*;
 
 import java.io.FileNotFoundException;
@@ -18,6 +9,7 @@ import java.io.PrintStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.spark.SparkConf;
@@ -47,9 +39,9 @@ public class SparkDriverBatchAnalysis implements Serializable {
 			e.printStackTrace();
 		}
 		// configure spark
-		// SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[2]")
+		// SparkConf sparkConf = new SparkConf().setAppName("Distributed SPRT").setMaster("local[16]")
 		// 		.set("spark.executor.memory", "32g");
-		// sc = new JavaSparkContext(sparkConf);
+		// JavaSparkContext sc = new JavaSparkContext(sparkConf);
 		
 		JavaSparkContext sc = JavaSparkContext.fromSparkContext(SparkContext.getOrCreate(new SparkConf()));
 
@@ -57,7 +49,8 @@ public class SparkDriverBatchAnalysis implements Serializable {
 		System.out.println("load configuration and predefined data");
 		Config config = new Config();
 		DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.ROW, config.COL);
-		Contrasts contrasts = new Contrasts("test/contrasts.txt", config.numContrasts, config.COL);
+		Contrasts contrasts = new Contrasts("test/contrasts.txt");
+		config.setContrasts(contrasts);
 		VolumeReader volumeReader = new VolumeReader();
 		Matrix C = contrasts.toMatrix();
 		Broadcast<Matrix> broadcastC = sc.broadcast(C);
@@ -76,13 +69,47 @@ public class SparkDriverBatchAnalysis implements Serializable {
 		boolean[] ROI = config.getROI();
 		dataset.setROI(ROI);
 
+		// setup broadcast variables
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 
-        ArrayList<Matrix> designMatrixList = new ArrayList<>();
-        //ArrayList<Matrix> XTXInverseList = new ArrayList<>();
-        ArrayList<Matrix> XTXInverseXTList = new ArrayList<>();
+		ArrayList<Matrix> XList = new ArrayList<>();
+		ArrayList<Matrix> XTXInverseList = new ArrayList<>();
+		ArrayList<Matrix> XTXInverseXTList = new ArrayList<>();
         ArrayList<Matrix> XXTXInverseList = new ArrayList<>();
         ArrayList<double[]> HList = new ArrayList<>();
+		for(int i = 1; i <= config.ROW; i++){
+			if(i <= config.K){
+				XList.add(null);
+				XTXInverseList.add(null);
+				XTXInverseXTList.add(null);
+				XXTXInverseList.add(null);
+				HList.add(null);
+			}
+			else{
+				X = designMatrix.toMatrix(i);
+				Matrix XTXInverse = computeXTXInverse(X);
+		    	Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
+		    	Matrix XXTXInverse = X.multiply(XTXInverse);
+				// double[] CTXTXInverseC = new double[C.getRow()];
+		    	// for (int j = 0; j < C.getRow(); j++) {
+				//     Matrix c = C.getRowSlice(j);
+				//     CTXTXInverseC[j] = c.transposeMultiply(XTXInverse).multiply(c).get();
+		    	// }
+		    	double[] H = computeH(XXTXInverse, X);
+            	XList.add(X);
+				XTXInverseList.add(XTXInverse);
+				
+            	XTXInverseXTList.add(XTXInverseXT);
+            	XXTXInverseList.add(XXTXInverse);
+            	HList.add(H);
+			}
+		}
+		Broadcast<ArrayList<Matrix>> broadcastXList = sc.broadcast(XList);
+		Broadcast<ArrayList<Matrix>> broadcastXTXInverseList = sc.broadcast(XTXInverseList);
+        Broadcast<ArrayList<Matrix>> broadcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
+        Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
+        Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
+
 
 		// Continue reading till reaching the K-th scan
 		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
@@ -94,7 +121,7 @@ public class SparkDriverBatchAnalysis implements Serializable {
 		// System.out.println(dataset.getVolume(config.K));
 
 		// Prepare
-		System.out.println(new Date() + ": Successfully reading in first " + 238 + " scans, Now start SPRT estimation.");
+		System.out.println(new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
 
 		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset());
 
@@ -102,35 +129,13 @@ public class SparkDriverBatchAnalysis implements Serializable {
 
 		while(scanNumber <= config.ROW){
 			int currentScanNumber = scanNumber;
-			designMatrixList.clear();
-			//XTXInverseList.clear();
-			XTXInverseXTList.clear();
-			XXTXInverseList.clear();
-			HList.clear();
+			
 			Broadcast<Integer> broadcastStartScanNumber = sc.broadcast(scanNumber);
-			Broadcast<Integer> broadcastEndScanNumber = sc.broadcast(Math.min(scanNumber+batchSize, config.ROW));
 
 			ArrayList<Brain> volumes = new ArrayList<>();
-			volumes.clear();
 			for(; currentScanNumber < scanNumber+batchSize && currentScanNumber <= config.ROW; currentScanNumber++){
 				BOLDPath = config.assemblyBOLDPath(currentScanNumber);
 				volumes.add(volumeReader.readFile(BOLDPath, currentScanNumber));
-
-				X = designMatrix.toMatrix(currentScanNumber);
-		    	Matrix XTXInverse = computeXTXInverse(X);
-		    	Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-		    	Matrix XXTXInverse = X.multiply(XTXInverse);
-		    	double[] CTXTXInverseC = new double[C.getRow()];
-		    	for (int j = 0; j < C.getRow(); j++) {
-				    Matrix c = C.getRowSlice(j);
-				    CTXTXInverseC[j] = c.transposeMultiply(XTXInverse).multiply(c).get();
-		    	}
-		    	double[] H = computeH(XXTXInverse, X);
-            	designMatrixList.add(X);
-            	//XTXInverseList.add(XTXInverse);
-            	XTXInverseXTList.add(XTXInverseXT);
-            	XXTXInverseList.add(XXTXInverse);
-            	HList.add(H);
 			}
 			
 			Broadcast<ArrayList<Brain>> broadcastVolumes = sc.broadcast(volumes);
@@ -149,98 +154,188 @@ public class SparkDriverBatchAnalysis implements Serializable {
 
 			});
 
-			Broadcast<ArrayList<Matrix>> broadcastDesignMatrixList = sc.broadcast(designMatrixList);
-        	//Broadcast<ArrayList<Matrix>> broadcastXTXInverseList = sc.broadcast(XTXInverseList);
-        	Broadcast<ArrayList<Matrix>> broadcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
-        	Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
-        	Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
-			Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(HList.size());
+			Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(volumes.size());
 
 
 			JavaRDD<ArrayList<CollectedDataset>> collectedDatasets = distributedDataset
-					.map(new Function<DistributedDataset, ArrayList<CollectedDataset>>() {
-						public ArrayList<CollectedDataset> call(DistributedDataset distributedDataset) {
-							MKL_Set_Num_Threads(1);
-							ArrayList<CollectedDataset> ret = new ArrayList<>();
-                            for(int i = 0; i < broadcastRealBatchSize.value(); i++){
-                                double[] boldResponseRaw = new double[broadcastStartScanNumber.value() + i];
-                                System.arraycopy(distributedDataset.getBoldResponse(), 0, boldResponseRaw, 0, broadcastStartScanNumber.value() + i);
-                                Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
-                                // Matrix X = broadcastXComplete.value().getFirstNumberOfRows(i+1);
+				.map(new Function<DistributedDataset, ArrayList<CollectedDataset>>() {
+					public ArrayList<CollectedDataset> call(DistributedDataset distributedDataset) {
+						MKL_Set_Num_Threads(1);
+						ArrayList<CollectedDataset> ret = new ArrayList<>();
+                        for(int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber.value() + broadcastRealBatchSize.value(); i++){
+                            double[] boldResponseRaw = new double[i];
+                            System.arraycopy(distributedDataset.getBoldResponse(), 0, boldResponseRaw, 0, i);
+                            Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
+                            CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
+                            Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i-1),boldResponse);
+                            double[] R = computeR(boldResponse, broadcastXList.value().get(i-1), beta);
+                            
+                            Matrix D = generateD(R, broadcastHList.value().get(i-1));
+                            for (int j = 0; j < broadcastC.value().getRow(); j++) {
+                                Matrix c = broadcastC.value().getRowSlice(j);
+                                double varianceSandwich = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
+								broadcastXTXInverseXTList.value().get(i-1), broadcastXXTXInverseList.value().get(i-1), D);
+                                // double SandwichVariance = Numerical.computeVarianceUsingMKLSparseRoutine1(c,
+                                // X, D);
+								// double variance = computeVariance(c, broadcastXList.value().get(i-1), D);
+								
+								double sigmaHatSquare = estimateSigmaHatSquare(boldResponseRaw, broadcastXList.value().get(i-1), beta, i, broadcastConfig.value().COL);
+								double variance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c, broadcastXTXInverseList.value().get(i-1));
+                                double cBeta = computeCBeta(c, beta);
+                                //double ZScore = computeZ(cBeta, variance);
+                                double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
+                                double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1, variance);
+                                int SPRTActivationStatus = computeActivationStatus(SPRT, broadcastConfig.value().SPRTUpperBound,
+                                broadcastConfig.value().SPRTLowerBound);
 
-			                    // Matrix XTXInverse = computeXTXInverse(X);
-			                    // Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-			                    // Matrix XXTXInverse = X.multiply(XTXInverse);
-			                    // double[] CTXTXInverseC = new double[broadcastC.value().getRow()];
-			                    // for (int j = 0; j < C.getRow(); j++) {
-				                //     Matrix c = C.getRowSlice(j);
-				                //     CTXTXInverseC[j] = c.transposeMultiply(XTXInverse).multiply(c).get();
-			                    // }
-			                    // double[] H = computeH(XXTXInverse, X);
-
-                                CollectedDataset temp = new CollectedDataset(broadcastC.value().getRow());
-                                Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i),boldResponse);
-                                double[] R = computeR(boldResponse, broadcastDesignMatrixList.value().get(i), beta);
-                                
-                                Matrix D = generateD(R, broadcastHList.value().get(i));
-
-                                for (int j = 0; j < broadcastC.value().getRow(); j++) {
-                                    Matrix c = broadcastC.value().getRowSlice(j);
-                                    // double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
-									// broadcastXTXInverseXTList.value().get(i), broadcastXXTXInverseList.value().get(i), D);
-                                    // double variance = Numerical.computeVarianceUsingMKLSparseRoutine1(c,
-                                    // X, D);
-                                    double variance = computeVariance(c, broadcastDesignMatrixList.value().get(i), D);
-                                    double cBeta = computeCBeta(c, beta);
-                                    double ZScore = computeZ(cBeta, variance);
-                                    double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
-                                    double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1, variance);
-                                    int SPRTActivationStatus = computeActivationStatus(SPRT, broadcastConfig.value().SPRTUpperBound,
-                                    broadcastConfig.value().SPRTLowerBound);
-    
-                                    temp.setVariance(j, variance);
-                                    temp.setCBeta(j, cBeta);
-                                    temp.setZScore(j, ZScore);
-                                    temp.setTheta1(j, theta1);
-                                    temp.setSPRT(j, SPRT);
-                                    temp.setSPRTActivationStatus(j, SPRTActivationStatus);
-                                }
-
-                                ret.add(temp);
+                                temp.setVariance(j, Math.sqrt(varianceSandwich)-Math.sqrt(variance));
+                                temp.setCBeta(j, cBeta);
+                                //temp.setZScore(j, ZScore);
+                                temp.setTheta1(j, theta1);
+                                temp.setSPRT(j, SPRT);
+                                temp.setSPRTActivationStatus(j, SPRTActivationStatus);
+								// forecasting using confidence interval
+								
+								// for(int k = i; k < broadcastConfig.value().ROW; k++){
+								// 	double forecastedVariance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c, broadcastXTXInverseList.value().get(k));
+								// 	// double forecastedZScore = computeZ(cBeta, forecastedVariance);
+                                // 	//double forecastedTheta1 = broadcastConfig.value().ZScore * Math.sqrt(forecastedVariance);
+								// 	int forecastedSPRTActivationStatus = evaluateConfidenceInterval(cBeta, forecastedVariance, 1.96, theta1);
+								// 	temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
+								// }
+								// forecasting using SPRT
+								
+								// for(int k = i; k < broadcastConfig.value().ROW; k++){
+								// 	double forecastedVariance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c, broadcastXTXInverseList.value().get(k));
+								// 	// double forecastedZScore = computeZ(cBeta, forecastedVariance);
+                                // 	// double forecastedTheta1 = broadcastConfig.value().ZScore * Math.sqrt(forecastedVariance);
+								// 	double forecastedSPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1, forecastedVariance);
+								//  	int forecastedSPRTActivationStatus = computeActivationStatus(forecastedSPRT, broadcastConfig.value().SPRTUpperBound,
+								// 	 broadcastConfig.value().SPRTLowerBound);
+								// 	temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
+								// }
+								
                             }
-                            return ret;
-                        }});
+                            ret.add(temp);
+                        }
+                        return ret;
+                    }
+				});
+
+			//collectedDatasets.cache();
+
+			List<ArrayList<CollectedDataset>> all = collectedDatasets.collect();
+			double[][] variances = new double[all.get(0).size()][all.size()];
+			for(int i = 0; i < all.size(); i++){
+				for(int j = 0; j < all.get(0).size(); j++){
+					variances[j][i] = all.get(i).get(j).getVariance(1);
+				}
+			}
+
+			ArrayList<double[]> res = new ArrayList<>();
+			for(double[] arr : variances){
+				res.add(computeMeanAndVariance(arr));
+			}
+
+			// System.out.println("Mean:");
+			// for(double[] re : res){
+			// 	System.out.println(re[0]);
+			// }
+
+			// System.out.println("\n\nVariance");
+			// for(double[] re : res){
+			// 	System.out.println(re[1]);
+			// }
+
+			ArrayList<Double> ret = new ArrayList<>();
+			for(double[] arr : variances){
+				double total = 0.0;
+				for(double d : arr){
+					total += d;
+				}
+				ret.add(total);
+			}
+
+			for(double d : ret){
+				System.out.println(d);
+			}
 
 			
-
-			// System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets
-			// for collectedDataset RDD: " + collectedDataset.count());
 			// 3. Get statistics from collected dataset
-			ArrayList<Integer> activationCounter = collectedDatasets.map(new Function<ArrayList<CollectedDataset>, ArrayList<Integer>>() {
-				public ArrayList<Integer> call(ArrayList<CollectedDataset> collectedDatasets) {
-                    ArrayList<Integer> ret = new ArrayList<>();
-                    for(CollectedDataset cd : collectedDatasets){
-                        int sum = 0;
-					    for (int i = 0; i < broadcastC.value().getRow(); i++) {
-						    if (cd.getSPRTActivationStatus(i) == 1)
-							sum++;
-					    }
-					    ret.add(sum);
-                    }
-					return ret;
-				}
-			}).reduce((a, b) -> {
-                for(int i = 0; i < a.size(); i++){
-                    a.set(i, a.get(i) + b.get(i));
-                }
-                return a;
-            });
-			// System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets
-			// for activationMap RDD: " + activationMap.count());
 
-            for(int i : activationCounter){
-                System.out.println(new Date() + ": " + i);
-            }
+			// ActivationResult result = collectedDatasets.map(new Function<ArrayList<CollectedDataset>, ActivationResult>() {
+			// 	public ActivationResult call(ArrayList<CollectedDataset> collectedDatasets) {
+            //         int[][][] SPRTActivationCounter = new int[collectedDatasets.size()][broadcastC.value().getRow()][3];
+					
+			// 		for(int i = 0; i < collectedDatasets.size(); i++){
+			// 		    for (int j = 0; j < broadcastC.value().getRow(); j++) {
+			// 				if(collectedDatasets.get(i).getSPRTActivationStatus(j) == -1){
+			// 					SPRTActivationCounter[i][j][0]++;
+			// 				}
+			// 				else if(collectedDatasets.get(i).getSPRTActivationStatus(j) == 0){
+			// 					SPRTActivationCounter[i][j][1]++;
+			// 				}
+			// 				else{
+			// 					SPRTActivationCounter[i][j][2]++;
+			// 				}
+
+			// 		    }
+            //         }
+
+			// 		int[][][][] forecastedActivationCounter = new int[collectedDatasets.size()][broadcastConfig.value().ROW][broadcastC.value().getRow()][3];
+
+			// 		for(int i = 0; i < collectedDatasets.size(); i++){
+			// 			for(int j = broadcastStartScanNumber.value()+i; j < broadcastConfig.value().ROW; j++){
+			// 				for (int k = 0; k < broadcastC.value().getRow(); k++) {
+			// 					if(collectedDatasets.get(i).getForecastedActivationStatus(j, k) == -1){
+			// 						forecastedActivationCounter[i][j][k][0]++;
+			// 					}
+			// 					else if(collectedDatasets.get(i).getForecastedActivationStatus(j, k) == 0){
+			// 						forecastedActivationCounter[i][j][k][1]++;
+			// 					}
+			// 					else{
+			// 						forecastedActivationCounter[i][j][k][2]++;
+			// 					}
+	
+			// 				}
+			// 			}
+            //         }
+			// 		return new ActivationResult(SPRTActivationCounter, forecastedActivationCounter);
+			// 	}
+			// }).reduce((a, b) -> {
+            //     return a.merge(b);
+            // });
+
+			// for(int i = 0; i < result.getSPRTActivationResult().length; i++){
+			// 	System.out.println("Scan " + (i + scanNumber));
+			// 	for(int j = 0; j < result.getSPRTActivationResult()[0].length; j++){
+			// 		System.out.println("Contrast " 
+			// 							+ (j+1) 
+			// 							+ ": Cross Upper: " 
+			// 							+ result.getSPRTActivationResult()[i][j][2] 
+			// 							+ ", Cross Lower: " 
+			// 							+ result.getSPRTActivationResult()[i][j][0] 
+			// 							+ ", Within Bound: " 
+			// 							+ result.getSPRTActivationResult()[i][j][1]);
+			// 	}
+			// }
+
+			// for(int i = 0; i < result.getForecastActivationResult().length; i++){
+			// 	System.out.println("Forecasting at Scan " + (i + scanNumber));
+			// 	for(int j = config.ROW-1; j < config.ROW; j++){
+			// 		System.out.println("Forecasted Scan " + (j+1));
+			// 		for(int k = 0; k < result.getForecastActivationResult()[0][0].length; k++){
+			// 			System.out.println("Contrast " 
+			// 								+ (k+1) 
+			// 								+ ": Cross Upper: " 
+			// 								+ result.getForecastActivationResult()[i][j][k][2] 
+			// 								+ ", Cross Lower: " 
+			// 								+ result.getForecastActivationResult()[i][j][k][0] 
+			// 								+ ", Within Bound: " 
+			// 								+ result.getForecastActivationResult()[i][j][k][1]);
+			// 		}
+			// 	}
+			// }
 
 			scanNumber = currentScanNumber;
 

@@ -200,5 +200,44 @@ public class Numerical {
 	    return new Matrix(D, R.length, R.length);
 	}
 
-	
+	/*
+ 	 * estimate sigma_hat^2
+ 	 * sigma_hat^2 = sum{r_i^2} / (# of scans - # of parameters)
+ 	 * r_i = Y_i - X * beta_hat
+ 	 */
+	public static double estimateSigmaHatSquare(double[] response, Matrix X, Matrix beta, int scanNumber, int col){
+		Matrix XBeta = X.multiply(beta);
+		double[] xBetaArray = XBeta.getArray();
+		double ret = 0.0;
+		for(int i = 0; i < response.length; i++){
+			ret += Math.pow((response[i] - xBetaArray[i]), 2);
+		}
+		ret /= (scanNumber - col);
+		return ret;
+	}
+
+	public static double computeVarianceUsingSigmaHatSquare(double sigmaHatSquare, Matrix c, Matrix XTXInverse){
+		return sigmaHatSquare * c.multiply(XTXInverse).multiplyTranspose(c).get();
+	}
+
+	public static int evaluateConfidenceInterval(double cBeta, double variance, double CI, double theta){
+		if(cBeta + CI * Math.sqrt(variance) < theta) return -1;
+		else if(cBeta - CI * Math.sqrt(variance) > 0) return 1;
+		else return 0;
+	}
+
+	public static double[] computeMeanAndVariance(double[] array){
+		double[] ret = new double[2];
+		double total = 0.0;
+		for(double d : array){
+			total += d;
+		}
+		ret[0] = total/array.length;
+		double variance = 0.0;
+		for(double d : array){
+			variance += Math.pow(d-ret[0], 2);
+		}
+		ret[1] = variance / array.length;
+		return ret;
+	}
 }

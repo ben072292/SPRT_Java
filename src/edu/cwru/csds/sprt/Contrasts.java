@@ -14,12 +14,12 @@ import java.util.Scanner;
  *
  */
 public class Contrasts implements Serializable{
-	private int contrastLength = 0;
-	private int numOfContrasts = 0;
+	public int contrastLength = 0;
+	public int numContrasts = 0;
 	private int[][] contrasts;
 	
 	public Contrasts(int numOfContrasts, int contrastLength) {
-		this.numOfContrasts = numOfContrasts;
+		this.numContrasts = numOfContrasts;
 		this.contrastLength = contrastLength;
 		this.contrasts = new int[numOfContrasts][contrastLength];
 		readStdout();
@@ -31,7 +31,7 @@ public class Contrasts implements Serializable{
 	
 	public Contrasts(String path, int numOfContrasts, int contrastLength) {
 		this(path);
-		if(this.numOfContrasts < numOfContrasts || this.contrastLength < contrastLength) System.out.println("Specified dimensions too large, will use dimensions of the whole file.");
+		if(this.numContrasts < numOfContrasts || this.contrastLength < contrastLength) System.out.println("Specified dimensions too large, will use dimensions of the whole file.");
 		else {
 			int[][] arr = new int[numOfContrasts][contrastLength];
 			for(int i = 0; i < numOfContrasts; i++) {
@@ -39,7 +39,7 @@ public class Contrasts implements Serializable{
 					arr[i][j] = this.contrasts[i][j];
 				}
 			}
-			this.numOfContrasts = numOfContrasts;
+			this.numContrasts = numOfContrasts;
 			this.contrastLength = contrastLength;
 			this.contrasts = arr;
 		}
@@ -47,8 +47,8 @@ public class Contrasts implements Serializable{
 	
 	public void readStdout() {
 		Scanner scanner = new Scanner(System.in);
-		for(int i = 1; i <= this.numOfContrasts; i++) {
-			System.out.print("Input contrast " + i + " Out Of " + this.numOfContrasts + " (Size " + this.contrastLength + ") :");
+		for(int i = 1; i <= this.numContrasts; i++) {
+			System.out.print("Input contrast " + i + " Out Of " + this.numContrasts + " (Size " + this.contrastLength + ") :");
 			int[] array = Arrays.stream(scanner.nextLine().split(" ")).mapToInt(Integer::parseInt).toArray();
 			if(array.length != this.contrastLength) {
 				System.out.println("Size not match: Expect " + this.contrastLength + ", Actual: " + array.length + ".");
@@ -79,21 +79,21 @@ public class Contrasts implements Serializable{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		this.numOfContrasts = rowList.size();
-		this.contrasts = new int[this.numOfContrasts][this.contrastLength];
-		for(int i = 0; i < this.numOfContrasts; i++) {
+		this.numContrasts = rowList.size();
+		this.contrasts = new int[this.numContrasts][this.contrastLength];
+		for(int i = 0; i < this.numContrasts; i++) {
 			this.contrasts[i] = rowList.get(i);
 		}
 	}
 	
 	public Matrix toMatrix() {
-		double[] arr = new double[this.numOfContrasts * this.contrastLength];
-		for(int i = 0; i < this.numOfContrasts; i++) {
+		double[] arr = new double[this.numContrasts * this.contrastLength];
+		for(int i = 0; i < this.numContrasts; i++) {
 			for(int j = 0; j <this.contrastLength; j++) {
 				arr[i*this.contrastLength+j] = this.contrasts[i][j];
 			}
 		}
-		return new Matrix(arr, this.numOfContrasts, this.contrastLength);
+		return new Matrix(arr, this.numContrasts, this.contrastLength);
 	}
 	
 	public static void main(String[] args) {

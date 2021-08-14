@@ -269,6 +269,10 @@ public class Matrix implements Serializable{
 	public double get() { // get first value
 		return this.array[0];
 	}
+
+	public double[] getArray(){
+		return this.array;
+	}
 	
 	public double get(int x, int y) {
 		assert x < row : "Row out of bounds!";

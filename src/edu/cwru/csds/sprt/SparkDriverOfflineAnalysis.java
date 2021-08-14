@@ -1,15 +1,6 @@
 package edu.cwru.csds.sprt;
 
-import static edu.cwru.csds.sprt.Numerical.computeActivationStatus;
-import static edu.cwru.csds.sprt.Numerical.computeBeta2;
-import static edu.cwru.csds.sprt.Numerical.computeCBeta;
-import static edu.cwru.csds.sprt.Numerical.computeH;
-import static edu.cwru.csds.sprt.Numerical.computeR;
-import static edu.cwru.csds.sprt.Numerical.computeVariance;
-import static edu.cwru.csds.sprt.Numerical.computeXTXInverse;
-import static edu.cwru.csds.sprt.Numerical.computeZ;
-import static edu.cwru.csds.sprt.Numerical.compute_SPRT;
-import static edu.cwru.csds.sprt.Numerical.generateD;
+import static edu.cwru.csds.sprt.Numerical.*;
 import static org.bytedeco.mkl.global.mkl_rt.*;
 
 import java.io.FileNotFoundException;
@@ -55,7 +46,7 @@ public class SparkDriverOfflineAnalysis implements Serializable {
 		System.out.println("load configuration and predefined data");
 		Config config = new Config();
 		DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.ROW, config.COL);
-		Contrasts contrasts = new Contrasts("test/contrasts.txt", config.numContrasts, config.COL);
+		Contrasts contrasts = new Contrasts("test/contrasts.txt");
 		VolumeReader volumeReader = new VolumeReader();
 		Matrix C = contrasts.toMatrix();
 		Broadcast<Matrix> broadcastC = sc.broadcast(C);
@@ -141,7 +132,7 @@ public class SparkDriverOfflineAnalysis implements Serializable {
 						public ArrayList<CollectedDataset> call(DistributedDataset distributedDataset) {
 							MKL_Set_Num_Threads(1);
 							ArrayList<CollectedDataset> ret = new ArrayList<>();
-                            for(int i = broadcastConfig.value().K-1; i < broadcastConfig.value().ROW; i++){
+                            for(int i = broadcastConfig.value().K; i < broadcastConfig.value().ROW; i++){
                                 double[] boldResponseRaw = new double[i+1];
                                 for(int j=0; j <= i; j++){
                                     boldResponseRaw[j] = distributedDataset.getBoldResponse()[j];
@@ -159,7 +150,7 @@ public class SparkDriverOfflineAnalysis implements Serializable {
 			                    // }
 			                    // double[] H = computeH(XXTXInverse, X);
 
-                                CollectedDataset temp = new CollectedDataset(broadcastC.value().getRow());
+                                CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
                                 Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i),boldResponse);
                                 double[] R = computeR(boldResponse, broadcastDesignMatrixList.value().get(i), beta);
                                 
@@ -197,31 +188,52 @@ public class SparkDriverOfflineAnalysis implements Serializable {
 			// System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets
 			// for collectedDataset RDD: " + collectedDataset.count());
 			// 3. Get statistics from collected dataset
-			ArrayList<Integer> activationCounter = collectedDatasets.map(new Function<ArrayList<CollectedDataset>, ArrayList<Integer>>() {
-				public ArrayList<Integer> call(ArrayList<CollectedDataset> collectedDatasets) {
-                    ArrayList<Integer> ret = new ArrayList<>();
-                    for(CollectedDataset cd : collectedDatasets){
-                        int sum = 0;
-					    for (int i = 0; i < broadcastC.value().getRow(); i++) {
-						    if (cd.getSPRTActivationStatus(i) == 1)
-							sum++;
+			int[][][] activationCounter = collectedDatasets.map(new Function<ArrayList<CollectedDataset>, int[][][]>() {
+				public int[][][] call(ArrayList<CollectedDataset> collectedDatasets) {
+                    int[][][] ret = new int[collectedDatasets.size()][broadcastC.value().getRow()][3];
+
+                    for(int i = 0; i < collectedDatasets.size(); i++){
+					    for (int j = 0; j < broadcastC.value().getRow(); j++) {
+							if(collectedDatasets.get(i).getSPRTActivationStatus(j) == -1){
+								ret[i][j][0]++;
+							}
+							else if(collectedDatasets.get(i).getSPRTActivationStatus(j) == 0){
+								ret[i][j][1]++;
+							}
+							else{
+								ret[i][j][2]++;
+							}
+
 					    }
-					    ret.add(sum);
                     }
 					return ret;
 				}
 			}).reduce((a, b) -> {
-                for(int i = 0; i < a.size(); i++){
-                    a.set(i, a.get(i) + b.get(i));
+                for(int i = 0; i < a.length; i++){
+					for(int j = 0; j < a[0].length; j++){
+						for(int k = 0; k < 3; k++){
+							a[i][j][k] += b[i][j][k];
+						}
+					}
                 }
                 return a;
             });
 			// System.out.println(new Date() + ": Round " + scanNumber + ": Count elemnets
 			// for activationMap RDD: " + activationMap.count());
 
-            for(int i : activationCounter){
-                System.out.println(new Date() + ": " + i);
-            }
+            for(int i = 0; i < activationCounter.length; i++){
+				System.out.println("Scan " + (i + scanNumber));
+				for(int j = 0; j < activationCounter[0].length; j++){
+					System.out.println("Contrast " 
+										+ (j+1) 
+										+ ": Cross Upper: " 
+										+ activationCounter[i][j][2] 
+										+ ", Cross Lower: " 
+										+ activationCounter[i][j][0] 
+										+ ", Within Bound: " 
+										+ activationCounter[i][j][1]);
+				}
+			}
 		sc.close();
 		end = System.nanoTime();
 		System.out.println("Total Time Consumption: " + (end-start)/1e9 + " seconds.");

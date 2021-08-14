@@ -12,7 +12,6 @@ public class Config implements Serializable {
 	public int ROW = 238; // total scans in the session
 	public int COL = 8; // # of columns in design matrix / contrasts
 	public int K = 78; // first K blocks used to collect data to estimate theta 1
-	public int numContrasts = 2; // row of contrasts
 	public double ZScore = 3.12; // Z values used for estimating theta 1
 	public double theta0 = 0;
 	public double theta1 = 1;
@@ -24,6 +23,7 @@ public class Config implements Serializable {
 	public double SPRTLowerBound = Numerical.SPRTLowerBound(alpha, beta);
 	public String BOLDPath = "Latest_data/";
 	public String BOLDPrefix = "bold";
+	public Contrasts contrasts;
 
 	private int x = 0;
 	private int y = 0;
@@ -53,6 +53,10 @@ public class Config implements Serializable {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	public void setContrasts(Contrasts contrasts){
+		this.contrasts = contrasts;
 	}
 
 	public boolean[] setROI(Brain volume) {

@@ -5,7 +5,7 @@ public class Driver {
 		System.out.println("load configuration and predefined data");
 		Config config = new Config();
 		DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.ROW, config.COL);
-		Contrasts contrasts = new Contrasts("test/contrasts.txt", config.numContrasts, config.COL);
+		Contrasts contrasts = new Contrasts("test/contrasts.txt");
 		VolumeReader volumeReader = new VolumeReader();
 		Matrix C = contrasts.toMatrix();
 		Matrix X;
@@ -33,13 +33,13 @@ public class Driver {
 		
 		// Prepare
 		System.out.println("Successfully reading in first " + config.K + " scans, Now start preparing SPRT estimation.");
-		Dataset[] activationDataset = new Dataset[config.numContrasts];
-		Dataset[] theta1Dataset = new Dataset[config.numContrasts];
-		Dataset[] ZScoreDataset = new Dataset[config.numContrasts];
-		Dataset[] varianceDataset = new Dataset[config.numContrasts];
-		Dataset[] SPRTDataset = new Dataset[config.numContrasts];
-		Dataset[] betaDataset = new Dataset[config.numContrasts];
-		for(int i = 0; i < config.numContrasts; i++) {
+		Dataset[] activationDataset = new Dataset[contrasts.numContrasts];
+		Dataset[] theta1Dataset = new Dataset[contrasts.numContrasts];
+		Dataset[] ZScoreDataset = new Dataset[contrasts.numContrasts];
+		Dataset[] varianceDataset = new Dataset[contrasts.numContrasts];
+		Dataset[] SPRTDataset = new Dataset[contrasts.numContrasts];
+		Dataset[] betaDataset = new Dataset[contrasts.numContrasts];
+		for(int i = 0; i < contrasts.numContrasts; i++) {
 			activationDataset[i] = new Dataset(config.ROW, config.getX(), config.getY(), config.getZ());
 //			theta1Dataset[i] = new Dataset(config.ROW, config.getX(), config.getY(), config.getZ());
 //			ZScoreDataset[i] = new Dataset(config.ROW, config.getX(), config.getY(), config.getZ());

@@ -72,13 +72,13 @@ public class Dataset implements Serializable {
 					if(ROI[pos]) {
 						ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, pos, ROI[pos]));
 					}
-					else{
-						double[] a = getBoldResponseAsArray(x, y, z);
-						for(int i = 0; i < a.length; i++){
-							a[i] = rand.nextDouble();
-						}
-						ret.add(new DistributedDataset(a, x, y, z, pos, true));
-					}
+					// else{
+					// 	double[] a = getBoldResponseAsArray(x, y, z);
+					// 	for(int i = 0; i < a.length; i++){
+					// 		a[i] = rand.nextDouble();
+					// 	}
+					// 	ret.add(new DistributedDataset(a, x, y, z, pos, true));
+					// }
 				}
 			}
 		}

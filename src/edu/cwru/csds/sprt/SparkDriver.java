@@ -1,15 +1,6 @@
 package edu.cwru.csds.sprt;
 
-import static edu.cwru.csds.sprt.Numerical.computeActivationStatus;
-import static edu.cwru.csds.sprt.Numerical.computeBeta2;
-import static edu.cwru.csds.sprt.Numerical.computeCBeta;
-import static edu.cwru.csds.sprt.Numerical.computeH;
-import static edu.cwru.csds.sprt.Numerical.computeR;
-import static edu.cwru.csds.sprt.Numerical.computeVariance;
-import static edu.cwru.csds.sprt.Numerical.computeXTXInverse;
-import static edu.cwru.csds.sprt.Numerical.computeZ;
-import static edu.cwru.csds.sprt.Numerical.compute_SPRT;
-import static edu.cwru.csds.sprt.Numerical.generateD;
+import static edu.cwru.csds.sprt.Numerical.*;
 
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -54,7 +45,7 @@ public class SparkDriver implements Serializable {
 		System.out.println("load configuration and predefined data");
 		Config config = new Config();
 		DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.ROW, config.COL);
-		Contrasts contrasts = new Contrasts("test/contrasts.txt", config.numContrasts, config.COL);
+		Contrasts contrasts = new Contrasts("test/contrasts.txt");
 		VolumeReader volumeReader = new VolumeReader();
 		Matrix C = contrasts.toMatrix();
 		Broadcast<Matrix> broadcastC = sc.broadcast(C);
@@ -75,26 +66,26 @@ public class SparkDriver implements Serializable {
 
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
 
-		// Broadcasting global data for bootstrapping
-		X = designMatrix.toMatrix(config.ROW);
-		Matrix XTXInverse = computeXTXInverse(X);
-		Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-		Matrix XXTXInverse = X.multiply(XTXInverse);
-		double[] CTXTXInverseC = new double[C.getRow()];
-		for (int i = 0; i < C.getRow(); i++) {
-			Matrix c = C.getRowSlice(i);
-			CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get();
-		}
-		double[] H = computeH(XXTXInverse, X);
+		// // Broadcasting global data for bootstrapping
+		// X = designMatrix.toMatrix(config.ROW);
+		// Matrix XTXInverse = computeXTXInverse(X);
+		// Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
+		// Matrix XXTXInverse = X.multiply(XTXInverse);
+		// double[] CTXTXInverseC = new double[C.getRow()];
+		// for (int i = 0; i < C.getRow(); i++) {
+		// 	Matrix c = C.getRowSlice(i);
+		// 	CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get();
+		// }
+		// double[] H = computeH(XXTXInverse, X);
 
-		// Create Spark shared variables
-		Broadcast<Matrix> broadcastXComplete = sc.broadcast(X);
-		// Broadcast<Matrix> broadcastXTXInverseComplete = sc.broadcast(XTXInverse);
-		Broadcast<Matrix> broadcastXTXInverseXTComplete = sc.broadcast(XTXInverseXT);
-		Broadcast<Matrix> broadcastXXTXInverseComplete = sc.broadcast(XXTXInverse);
-		// Broadcast<double[]> broadcastCTXTXInverseCComplete =
-		// sc.broadcast(CTXTXInverseC);
-		Broadcast<double[]> broadcastHComplete = sc.broadcast(H);
+		// // Create Spark shared variables
+		// Broadcast<Matrix> broadcastXComplete = sc.broadcast(X);
+		// // Broadcast<Matrix> broadcastXTXInverseComplete = sc.broadcast(XTXInverse);
+		// Broadcast<Matrix> broadcastXTXInverseXTComplete = sc.broadcast(XTXInverseXT);
+		// Broadcast<Matrix> broadcastXXTXInverseComplete = sc.broadcast(XXTXInverse);
+		// // Broadcast<double[]> broadcastCTXTXInverseCComplete =
+		// // sc.broadcast(CTXTXInverseC);
+		// Broadcast<double[]> broadcastHComplete = sc.broadcast(H);
 
 		// Continue reading till reaching the K-th scan
 		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
@@ -121,15 +112,15 @@ public class SparkDriver implements Serializable {
 
 			X = designMatrix.toMatrix(scanNumber);
 
-			XTXInverse = computeXTXInverse(X);
-			XTXInverseXT = XTXInverse.multiplyTranspose(X);
-			XXTXInverse = X.multiply(XTXInverse);
-			CTXTXInverseC = new double[C.getRow()];
+			Matrix XTXInverse = computeXTXInverse(X);
+			Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
+			Matrix XXTXInverse = X.multiply(XTXInverse);
+			double[] CTXTXInverseC = new double[C.getRow()];
 			for (int i = 0; i < C.getRow(); i++) {
 				Matrix c = C.getRowSlice(i);
 				CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get();
 			}
-			H = computeH(XXTXInverse, X);
+			double[] H = computeH(XXTXInverse, X);
 
 			// Create Spark shared variables
 			Broadcast<Matrix> broadcastX = sc.broadcast(X);
@@ -163,7 +154,7 @@ public class SparkDriver implements Serializable {
 			JavaRDD<CollectedDataset> collectedDataset = distributedDataset
 					.map(new Function<DistributedDataset, CollectedDataset>() {
 						public CollectedDataset call(DistributedDataset distributedDataset) {
-							CollectedDataset ret = new CollectedDataset(broadcastC.value().getRow());
+							CollectedDataset ret = new CollectedDataset(broadcastConfig.value());
 
 							Matrix beta = computeBeta2(broadcastXTXInverseXT.value(),
 									distributedDataset.getBoldResponseMatrix());

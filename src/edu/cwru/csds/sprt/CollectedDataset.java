@@ -1,28 +1,27 @@
 package edu.cwru.csds.sprt;
 import java.io.Serializable;
+import java.util.ArrayList;
 
 @SuppressWarnings("serial")
 public class CollectedDataset implements Serializable{
-	private int numOfC;
+	private Config config;
 	private double[] variance;
 	private double[] cBeta;
 	private double[] ZScore;
 	private double[] theta1;
 	private double[] SPRT;
 	private int[] SPRTActivationStatus;
+	private int[][] forecastedActivationStatus;
 	
-	public CollectedDataset(int numOfC) {
-		this.numOfC = numOfC;
-		this.variance = new double[numOfC];
-		this.cBeta = new double[numOfC];
-		this.ZScore = new double[numOfC];
-		this.theta1 = new double[numOfC];
-		this.SPRT = new double[numOfC];
-		this.SPRTActivationStatus = new int[numOfC];
-	}
-	
-	public int getNumOfC() {
-		return this.numOfC;
+	public CollectedDataset(Config config) {
+		this.config = config;
+		this.variance = new double[config.contrasts.numContrasts];
+		this.cBeta = new double[config.contrasts.numContrasts];
+		this.ZScore = new double[config.contrasts.numContrasts];
+		this.theta1 = new double[config.contrasts.numContrasts];
+		this.SPRT = new double[config.contrasts.numContrasts];
+		this.SPRTActivationStatus = new int[config.contrasts.numContrasts];
+		//this.forecastedActivationStatus = new int[config.ROW][config.contrasts.numContrasts];
 	}
 	
 	public double getVariance(int index) {
@@ -57,7 +56,7 @@ public class CollectedDataset implements Serializable{
 		this.theta1[index] = value;
 	}
 	
-	public double getSPRTe(int index) {
+	public double getSPRT(int index) {
 		return this.SPRT[index];
 	}
 	
@@ -72,5 +71,12 @@ public class CollectedDataset implements Serializable{
 	public void setSPRTActivationStatus(int index, int value) {
 		this.SPRTActivationStatus[index] = value;
 	}
-	
+
+	public int getForecastedActivationStatus(int pos1, int pos2){
+		return this.forecastedActivationStatus[pos1][pos2];
+	}
+
+	public void setForecastedActivationStatus(int pos1, int pos2, int val){
+		this.forecastedActivationStatus[pos1][pos2] = val;
+	}
 }
