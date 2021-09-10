@@ -105,19 +105,28 @@ public class SparkDriverBatchAnalysis implements Serializable {
 			}
 		}
 		Broadcast<ArrayList<Matrix>> broadcastXList = sc.broadcast(XList);
-		Broadcast<ArrayList<Matrix>> broadcastXTXInverseList = sc.broadcast(XTXInverseList);
+		//Broadcast<ArrayList<Matrix>> broadcastXTXInverseList = sc.broadcast(XTXInverseList);
         Broadcast<ArrayList<Matrix>> broadcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
         Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
         Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
 
-
+		double[] theta1 = new double[config.getX() * config.getY() * config.getZ()];
 		// Continue reading till reaching the K-th scan
 		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
 			BOLDPath = config.assemblyBOLDPath(scanNumber);
 			volume = volumeReader.readFile(BOLDPath, scanNumber);
 			dataset.addOneScan(volume);
+
+			// formula update 09/01/2021: theta1 is only estimated once for all at scan K
+			if(scanNumber == config.K){
+				Brain[] theta1Volume = Numerical.estimateTheta1(dataset, XList.get(config.K-1), C, config.ZScore, ROI);
+				for(int i = 0; i < theta1Volume.length; i++){
+					theta1[i] = theta1Volume[i].getVoxel(i);
+				}
+			}
 		}
+		Broadcast<double[]> broadcastTheta1 = sc.broadcast(theta1);
 		// System.out.println(dataset.getVolume(config.K));
 
 		// Prepare
@@ -173,27 +182,31 @@ public class SparkDriverBatchAnalysis implements Serializable {
                             Matrix D = generateD(R, broadcastHList.value().get(i-1));
                             for (int j = 0; j < broadcastC.value().getRow(); j++) {
                                 Matrix c = broadcastC.value().getRowSlice(j);
-                                double varianceSandwich = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
+                                double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
 								broadcastXTXInverseXTList.value().get(i-1), broadcastXXTXInverseList.value().get(i-1), D);
                                 // double SandwichVariance = Numerical.computeVarianceUsingMKLSparseRoutine1(c,
                                 // X, D);
-								// double variance = computeVariance(c, broadcastXList.value().get(i-1), D);
+								//double variance = computeVariance(c, broadcastXList.value().get(i-1), D);
+								//double variance = computeVarianceSandwich(c, broadcastXTXInverseList.value().get(i-1), broadcastXList.value().get(i-1), D);
 								
-								double sigmaHatSquare = estimateSigmaHatSquare(boldResponseRaw, broadcastXList.value().get(i-1), beta, i, broadcastConfig.value().COL);
-								double variance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c, broadcastXTXInverseList.value().get(i-1));
+								// double sigmaHatSquare = estimateSigmaHatSquare(boldResponseRaw, broadcastXList.value().get(i-1), beta, i, broadcastConfig.value().COL);
+								// double variance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c, broadcastXTXInverseList.value().get(i-1));
                                 double cBeta = computeCBeta(c, beta);
                                 //double ZScore = computeZ(cBeta, variance);
-                                double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
+                                
+								//double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
+								double theta1 = broadcastTheta1.value()[distributedDataset.getID()];
                                 double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1, variance);
                                 int SPRTActivationStatus = computeActivationStatus(SPRT, broadcastConfig.value().SPRTUpperBound,
                                 broadcastConfig.value().SPRTLowerBound);
 
-                                temp.setVariance(j, Math.sqrt(varianceSandwich)-Math.sqrt(variance));
+                                temp.setVariance(j, variance);
                                 temp.setCBeta(j, cBeta);
                                 //temp.setZScore(j, ZScore);
                                 temp.setTheta1(j, theta1);
                                 temp.setSPRT(j, SPRT);
                                 temp.setSPRTActivationStatus(j, SPRTActivationStatus);
+								
 								// forecasting using confidence interval
 								
 								// for(int k = i; k < broadcastConfig.value().ROW; k++){
@@ -203,17 +216,20 @@ public class SparkDriverBatchAnalysis implements Serializable {
 								// 	int forecastedSPRTActivationStatus = evaluateConfidenceInterval(cBeta, forecastedVariance, 1.96, theta1);
 								// 	temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
 								// }
+
 								// forecasting using SPRT
 								
-								// for(int k = i; k < broadcastConfig.value().ROW; k++){
-								// 	double forecastedVariance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c, broadcastXTXInverseList.value().get(k));
-								// 	// double forecastedZScore = computeZ(cBeta, forecastedVariance);
-                                // 	// double forecastedTheta1 = broadcastConfig.value().ZScore * Math.sqrt(forecastedVariance);
-								// 	double forecastedSPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1, forecastedVariance);
-								//  	int forecastedSPRTActivationStatus = computeActivationStatus(forecastedSPRT, broadcastConfig.value().SPRTUpperBound,
-								// 	 broadcastConfig.value().SPRTLowerBound);
-								// 	temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
-								// }
+								for(int k = i; k < broadcastConfig.value().ROW; k++){
+									double forecastedVariance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
+									broadcastXTXInverseXTList.value().get(k), broadcastXXTXInverseList.value().get(k), D);
+									// double forecastedVariance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c, broadcastXTXInverseList.value().get(k));
+									// double forecastedZScore = computeZ(cBeta, forecastedVariance);
+                                	// double forecastedTheta1 = broadcastConfig.value().ZScore * Math.sqrt(forecastedVariance);
+									double forecastedSPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1, forecastedVariance);
+								 	int forecastedSPRTActivationStatus = computeActivationStatus(forecastedSPRT, broadcastConfig.value().SPRTUpperBound,
+									 broadcastConfig.value().SPRTLowerBound);
+									temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
+								}
 								
                             }
                             ret.add(temp);
@@ -222,20 +238,22 @@ public class SparkDriverBatchAnalysis implements Serializable {
                     }
 				});
 
-			//collectedDatasets.cache();
+			/**
+			 *  Mean and Variance of variance estimation
+			 */
+			
+				// List<ArrayList<CollectedDataset>> all = collectedDatasets.collect();
+			// double[][] variances = new double[all.get(0).size()][all.size()];
+			// for(int i = 0; i < all.size(); i++){
+			// 	for(int j = 0; j < all.get(0).size(); j++){
+			// 		variances[j][i] = all.get(i).get(j).getVariance(1);
+			// 	}
+			// }
 
-			List<ArrayList<CollectedDataset>> all = collectedDatasets.collect();
-			double[][] variances = new double[all.get(0).size()][all.size()];
-			for(int i = 0; i < all.size(); i++){
-				for(int j = 0; j < all.get(0).size(); j++){
-					variances[j][i] = all.get(i).get(j).getVariance(1);
-				}
-			}
-
-			ArrayList<double[]> res = new ArrayList<>();
-			for(double[] arr : variances){
-				res.add(computeMeanAndVariance(arr));
-			}
+			// ArrayList<double[]> res = new ArrayList<>();
+			// for(double[] arr : variances){
+			// 	res.add(computeMeanAndVariance(arr));
+			// }
 
 			// System.out.println("Mean:");
 			// for(double[] re : res){
@@ -247,95 +265,95 @@ public class SparkDriverBatchAnalysis implements Serializable {
 			// 	System.out.println(re[1]);
 			// }
 
-			ArrayList<Double> ret = new ArrayList<>();
-			for(double[] arr : variances){
-				double total = 0.0;
-				for(double d : arr){
-					total += d;
-				}
-				ret.add(total);
-			}
+			// ArrayList<Double> ret = new ArrayList<>();
+			// for(double[] arr : variances){
+			// 	double total = 0.0;
+			// 	for(double d : arr){
+			// 		total += d;
+			// 	}
+			// 	ret.add(total);
+			// }
 
-			for(double d : ret){
-				System.out.println(d);
-			}
+			// for(double d : ret){
+			// 	System.out.println(d);
+			// }
 
 			
 			// 3. Get statistics from collected dataset
 
-			// ActivationResult result = collectedDatasets.map(new Function<ArrayList<CollectedDataset>, ActivationResult>() {
-			// 	public ActivationResult call(ArrayList<CollectedDataset> collectedDatasets) {
-            //         int[][][] SPRTActivationCounter = new int[collectedDatasets.size()][broadcastC.value().getRow()][3];
+			ActivationResult result = collectedDatasets.map(new Function<ArrayList<CollectedDataset>, ActivationResult>() {
+				public ActivationResult call(ArrayList<CollectedDataset> collectedDatasets) {
+                    int[][][] SPRTActivationCounter = new int[collectedDatasets.size()][broadcastC.value().getRow()][3];
 					
-			// 		for(int i = 0; i < collectedDatasets.size(); i++){
-			// 		    for (int j = 0; j < broadcastC.value().getRow(); j++) {
-			// 				if(collectedDatasets.get(i).getSPRTActivationStatus(j) == -1){
-			// 					SPRTActivationCounter[i][j][0]++;
-			// 				}
-			// 				else if(collectedDatasets.get(i).getSPRTActivationStatus(j) == 0){
-			// 					SPRTActivationCounter[i][j][1]++;
-			// 				}
-			// 				else{
-			// 					SPRTActivationCounter[i][j][2]++;
-			// 				}
+					for(int i = 0; i < collectedDatasets.size(); i++){
+					    for (int j = 0; j < broadcastC.value().getRow(); j++) {
+							if(collectedDatasets.get(i).getSPRTActivationStatus(j) == -1){
+								SPRTActivationCounter[i][j][0]++;
+							}
+							else if(collectedDatasets.get(i).getSPRTActivationStatus(j) == 0){
+								SPRTActivationCounter[i][j][1]++;
+							}
+							else{
+								SPRTActivationCounter[i][j][2]++;
+							}
 
-			// 		    }
-            //         }
+					    }
+                    }
 
-			// 		int[][][][] forecastedActivationCounter = new int[collectedDatasets.size()][broadcastConfig.value().ROW][broadcastC.value().getRow()][3];
+					int[][][][] forecastedActivationCounter = new int[collectedDatasets.size()][broadcastConfig.value().ROW][broadcastC.value().getRow()][3];
 
-			// 		for(int i = 0; i < collectedDatasets.size(); i++){
-			// 			for(int j = broadcastStartScanNumber.value()+i; j < broadcastConfig.value().ROW; j++){
-			// 				for (int k = 0; k < broadcastC.value().getRow(); k++) {
-			// 					if(collectedDatasets.get(i).getForecastedActivationStatus(j, k) == -1){
-			// 						forecastedActivationCounter[i][j][k][0]++;
-			// 					}
-			// 					else if(collectedDatasets.get(i).getForecastedActivationStatus(j, k) == 0){
-			// 						forecastedActivationCounter[i][j][k][1]++;
-			// 					}
-			// 					else{
-			// 						forecastedActivationCounter[i][j][k][2]++;
-			// 					}
+					for(int i = 0; i < collectedDatasets.size(); i++){
+						for(int j = broadcastStartScanNumber.value()+i; j < broadcastConfig.value().ROW; j++){
+							for (int k = 0; k < broadcastC.value().getRow(); k++) {
+								if(collectedDatasets.get(i).getForecastedActivationStatus(j, k) == -1){
+									forecastedActivationCounter[i][j][k][0]++;
+								}
+								else if(collectedDatasets.get(i).getForecastedActivationStatus(j, k) == 0){
+									forecastedActivationCounter[i][j][k][1]++;
+								}
+								else{
+									forecastedActivationCounter[i][j][k][2]++;
+								}
 	
-			// 				}
-			// 			}
-            //         }
-			// 		return new ActivationResult(SPRTActivationCounter, forecastedActivationCounter);
-			// 	}
-			// }).reduce((a, b) -> {
-            //     return a.merge(b);
-            // });
+							}
+						}
+                    }
+					return new ActivationResult(SPRTActivationCounter, forecastedActivationCounter);
+				}
+			}).reduce((a, b) -> {
+                return a.merge(b);
+            });
 
-			// for(int i = 0; i < result.getSPRTActivationResult().length; i++){
-			// 	System.out.println("Scan " + (i + scanNumber));
-			// 	for(int j = 0; j < result.getSPRTActivationResult()[0].length; j++){
-			// 		System.out.println("Contrast " 
-			// 							+ (j+1) 
-			// 							+ ": Cross Upper: " 
-			// 							+ result.getSPRTActivationResult()[i][j][2] 
-			// 							+ ", Cross Lower: " 
-			// 							+ result.getSPRTActivationResult()[i][j][0] 
-			// 							+ ", Within Bound: " 
-			// 							+ result.getSPRTActivationResult()[i][j][1]);
-			// 	}
-			// }
+			for(int i = 0; i < result.getSPRTActivationResult().length; i++){
+				System.out.println("Scan " + (i + scanNumber));
+				for(int j = 0; j < result.getSPRTActivationResult()[0].length; j++){
+					System.out.println("Contrast " 
+										+ (j+1) 
+										+ ": Cross Upper: " 
+										+ result.getSPRTActivationResult()[i][j][2] 
+										+ ", Cross Lower: " 
+										+ result.getSPRTActivationResult()[i][j][0] 
+										+ ", Within Bound: " 
+										+ result.getSPRTActivationResult()[i][j][1]);
+				}
+			}
 
-			// for(int i = 0; i < result.getForecastActivationResult().length; i++){
-			// 	System.out.println("Forecasting at Scan " + (i + scanNumber));
-			// 	for(int j = config.ROW-1; j < config.ROW; j++){
-			// 		System.out.println("Forecasted Scan " + (j+1));
-			// 		for(int k = 0; k < result.getForecastActivationResult()[0][0].length; k++){
-			// 			System.out.println("Contrast " 
-			// 								+ (k+1) 
-			// 								+ ": Cross Upper: " 
-			// 								+ result.getForecastActivationResult()[i][j][k][2] 
-			// 								+ ", Cross Lower: " 
-			// 								+ result.getForecastActivationResult()[i][j][k][0] 
-			// 								+ ", Within Bound: " 
-			// 								+ result.getForecastActivationResult()[i][j][k][1]);
-			// 		}
-			// 	}
-			// }
+			for(int i = 0; i < result.getForecastActivationResult().length; i++){
+				System.out.println("Forecasting at Scan " + (i + scanNumber));
+				for(int j = config.ROW-1; j < config.ROW; j++){
+					System.out.println("Forecasted Scan " + (j+1));
+					for(int k = 0; k < result.getForecastActivationResult()[0][0].length; k++){
+						System.out.println("Contrast " 
+											+ (k+1) 
+											+ ": Cross Upper: " 
+											+ result.getForecastActivationResult()[i][j][k][2] 
+											+ ", Cross Lower: " 
+											+ result.getForecastActivationResult()[i][j][k][0] 
+											+ ", Within Bound: " 
+											+ result.getForecastActivationResult()[i][j][k][1]);
+					}
+				}
+			}
 
 			scanNumber = currentScanNumber;
 

@@ -54,6 +54,16 @@ public class Matrix implements Serializable{
 		this.col = matrix.col;
 		this.array = matrix.array.clone();
 	}
+
+	public Matrix transpose(){
+		Matrix res = new Matrix(this.col, this.row);
+		for(int i = 0; i < this.row; i++){
+			for(int j = 0; j < this.col; j++){
+				res.array[j*this.row+i] = this.array[i*this.col +j];
+			}
+		}
+		return res;
+	}
 	
 	public Matrix multiply(Matrix matrix) {
 		assert matrix.row == this.col : "Matrix Multiplication: size incorrect!";

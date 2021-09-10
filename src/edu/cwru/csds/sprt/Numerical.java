@@ -84,6 +84,26 @@ public class Numerical {
 		return c.multiply(XTXInverseXT).multiply(D.diagnalMultiplyDense(XXTXInverse)).multiplyTranspose(c).get();
 	}
 
+	public static double computeVarianceSandwichFullFormula(Matrix c, Matrix XTXInverse, Matrix X, Matrix D){
+		Matrix sum = new Matrix(X.getCol(), X.getCol());
+		for(int i = 0; i < X.getRow(); i++){
+			Matrix temp = X.getRowSlice(i).transpose().multiply(X.getRowSlice(i));
+			for(int j = 0; j < sum.getArray().length; j++){
+				sum.getArray()[j] += temp.getArray()[j] * D.get(i, i);
+			}
+		}
+
+		return c.multiply(XTXInverse).multiply(sum).multiply(XTXInverse).multiplyTranspose(c).get();
+	}
+
+	public static double computeVarianceSandwich(Matrix c, Matrix XTXInverse, Matrix X, Matrix D){
+		double sum = 0.0;
+		for(int i = 0; i < X.getRow(); i++){
+			sum += Math.pow(c.multiply(XTXInverse).multiplyTranspose(X.getRowSlice(i)).get(), 2) * D.get(i, i);
+		}
+		return sum;
+	}
+
 	
 	/*
 	 * Output: SPRT result
