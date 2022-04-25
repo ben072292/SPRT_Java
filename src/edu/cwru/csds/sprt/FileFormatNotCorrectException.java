@@ -4,7 +4,6 @@ package edu.cwru.csds.sprt;
  * @author Ben
  *
  */
-@SuppressWarnings("serial")
 public class FileFormatNotCorrectException extends Exception{
 	
 	public FileFormatNotCorrectException() {

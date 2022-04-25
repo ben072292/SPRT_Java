@@ -9,7 +9,6 @@ import java.util.Random;
  * @author Ben
  *
  */
-@SuppressWarnings("serial")
 public class Dataset implements Serializable {
 	private int totalScans = 0;
 	private int x = 0;

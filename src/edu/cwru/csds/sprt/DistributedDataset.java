@@ -7,7 +7,6 @@ import java.io.Serializable;
  * @author Ben
  *
  */
-@SuppressWarnings("serial")
 public class DistributedDataset implements Serializable {
 	private double[] boldResponse;
 	private int x;

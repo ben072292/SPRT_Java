@@ -7,7 +7,6 @@ import java.io.Serializable;
  * @author Ben
  *
  */
-@SuppressWarnings("serial")
 public class Config implements Serializable {
 	public int ROW = 238; // total scans in the session
 	public int COL = 8; // # of columns in design matrix / contrasts

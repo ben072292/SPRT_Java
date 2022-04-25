@@ -22,7 +22,6 @@ import org.apache.spark.broadcast.Broadcast;
  * @author Ben
  *
  */
-@SuppressWarnings("serial")
 public class SparkDriver implements Serializable {
 
 	public static void main(String[] args) {

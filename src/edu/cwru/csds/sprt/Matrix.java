@@ -12,7 +12,6 @@ import java.util.Random;
  * @author Ben
  *
  */
-@SuppressWarnings("serial")
 public class Matrix implements Serializable{
 	private static final double alpha = 1.0;
 	private static final double beta = 0.0;

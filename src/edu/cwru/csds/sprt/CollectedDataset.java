@@ -2,7 +2,6 @@ package edu.cwru.csds.sprt;
 import java.io.Serializable;
 import java.util.ArrayList;
 
-@SuppressWarnings("serial")
 public class CollectedDataset implements Serializable{
 	private Config config;
 	private double[] variance;

@@ -11,7 +11,6 @@ import com.google.common.primitives.Doubles;
  * @author Ben
  *
  */
-@SuppressWarnings("serial")
 public class Brain implements Serializable {
 	private int scanNumber = 0;
 	private int x = 0;
