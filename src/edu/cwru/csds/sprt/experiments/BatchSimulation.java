@@ -72,9 +72,8 @@ public class BatchSimulation implements Serializable {
         System.out.println("Read in first scan to get some brain volume metadata");
         int scanNumber;
         String BOLDPath = config.assemblyBOLDPath(1);
-        Brain volume = volumeReader.readFile(BOLDPath, 1);
+        Brain volume = new Brain(1, 36 * dataExpand, 128, 128, true);
         config.setVolumeSize(volume);
-        config.expandeVolumeSize(dataExpand);
         Dataset dataset = new Dataset(config.ROW, config.getX(), config.getY(), config.getZ());
         dataset.addOneSimulationData();
         System.out.println("Complete");
@@ -125,9 +124,6 @@ public class BatchSimulation implements Serializable {
         double[] theta1 = new double[config.getX() * config.getY() * config.getZ()];
         // Continue reading till reaching the K-th scan
         for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
-            System.out.println("Reading Scan " + scanNumber);
-            BOLDPath = config.assemblyBOLDPath(scanNumber);
-            volume = volumeReader.readFile(BOLDPath, scanNumber);
             dataset.addOneSimulationData();
 
             // formula update 09/01/2021: theta1 is only estimated once for all at scan K
@@ -158,7 +154,7 @@ public class BatchSimulation implements Serializable {
             ArrayList<Brain> volumes = new ArrayList<>();
             for (; currentScanNumber < scanNumber + batchSize && currentScanNumber <= config.ROW; currentScanNumber++) {
                 BOLDPath = config.assemblyBOLDPath(currentScanNumber);
-                volumes.add(volumeReader.readFile(BOLDPath, currentScanNumber));
+                volumes.add(new Brain(currentScanNumber, config.getX(), config.getY(), config.getZ(), true));
             }
 
             Broadcast<ArrayList<Brain>> broadcastVolumes = sc.broadcast(volumes);
