@@ -4,6 +4,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.List;
+import java.util.Random;
 
 import com.google.common.primitives.Doubles;
 
@@ -28,6 +29,18 @@ public class Brain implements Serializable {
 		this.y = y;
 		this.z = z;
 		this.voxels = new double[x * y * z];
+	}
+
+	public Brain(int scanNum, int x, int y, int z, boolean random) {
+		this.scanNumber = scanNum;
+		this.x = x;
+		this.y = y;
+		this.z = z;
+		this.voxels = new double[x * y * z];
+		Random rand = new Random();
+		for (int i = 0; i < x * y * z; i++) {
+			this.voxels[i] = rand.nextDouble();
+		}
 	}
 
 	public Brain(Brain volume) {

@@ -39,7 +39,6 @@ public class SparkDriverBatchAnalysis implements Serializable {
 
 	public static void main(String[] args) {
 		int batchSize = Integer.parseInt(args[0]);
-		int dataExpand = Integer.parseInt(args[1]);
 		long start, end;
 		PrintStream out;
 		try {
@@ -163,110 +162,104 @@ public class SparkDriverBatchAnalysis implements Serializable {
 			Broadcast<ArrayList<Brain>> broadcastVolumes = sc.broadcast(volumes);
 
 			distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>() {
-
 				public DistributedDataset call(DistributedDataset distributedDataset) {
 					for (int i = 0; i < broadcastVolumes.value().size(); i++) {
-						distributedDataset = new DistributedDataset(ArrayUtils.add(distributedDataset.getBoldResponse(),
-								broadcastVolumes.value().get(i).getVoxel(distributedDataset.getX(),
-										distributedDataset.getY(), distributedDataset.getZ())),
+						distributedDataset = new DistributedDataset(
+								ArrayUtils.add(distributedDataset.getBoldResponse(),
+										broadcastVolumes.value().get(i).getVoxel(distributedDataset.getX(),
+												distributedDataset.getY(), distributedDataset.getZ())),
 								distributedDataset);
 					}
 					return distributedDataset;
 				}
-
 			});
 
 			Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(volumes.size());
-			Broadcast<Integer> broadcastDataExpand = sc.broadcast(dataExpand);
 
 			JavaRDD<ArrayList<CollectedDataset>> collectedDatasets = distributedDataset
 					.map(new Function<DistributedDataset, ArrayList<CollectedDataset>>() {
 						public ArrayList<CollectedDataset> call(DistributedDataset distributedDataset) {
 							MKL_Set_Num_Threads(1);
 							ArrayList<CollectedDataset> ret = new ArrayList<>();
-							for (int a = 0; a < broadcastDataExpand.value(); a++) {
-								ret.clear();
-								for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber.value()
-										+ broadcastRealBatchSize.value(); i++) {
-									double[] boldResponseRaw = new double[i];
-									System.arraycopy(distributedDataset.getBoldResponse(), 0, boldResponseRaw, 0, i);
-									Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
-									CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
-									Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i - 1),
-											boldResponse);
-									double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1), beta);
-									Matrix D = generateD(R, broadcastHList.value().get(i - 1));
-									for (int j = 0; j < broadcastC.value().getRow(); j++) {
+							for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber.value()
+									+ broadcastRealBatchSize.value(); i++) {
+								double[] boldResponseRaw = new double[i];
+								System.arraycopy(distributedDataset.getBoldResponse(), 0, boldResponseRaw, 0, i);
+								Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
+								CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
+								Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i - 1),
+										boldResponse);
+								double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1), beta);
+								Matrix D = generateD(R, broadcastHList.value().get(i - 1));
+								for (int j = 0; j < broadcastC.value().getRow(); j++) {
 
-										Matrix c = broadcastC.value().getRowSlice(j);
-										double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
-												broadcastXTXInverseXTList.value().get(i - 1),
-												broadcastXXTXInverseList.value().get(i - 1), D);
-										// double SandwichVariance = Numerical.computeVarianceUsingMKLSparseRoutine1(c,
-										// X, D);
-										// double variance = computeVariance(c, broadcastXList.value().get(i-1), D);
-										// double variance = computeVarianceSandwich(c,
-										// broadcastXTXInverseList.value().get(i-1), broadcastXList.value().get(i-1),
-										// D);
-										// double sigmaHatSquare = estimateSigmaHatSquare(boldResponseRaw,
-										// broadcastXList.value().get(i-1), beta, i, broadcastConfig.value().COL);
-										// double variance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c,
-										// broadcastXTXInverseList.value().get(i-1));
-										double cBeta = computeCBeta(c, beta);
-										// double ZScore = computeZ(cBeta, variance);
-										// double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
-										double theta1 = broadcastTheta1.value()[distributedDataset.getID()];
-										double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1,
-												variance);
-										int SPRTActivationStatus = computeActivationStatus(SPRT,
-												broadcastConfig.value().SPRTUpperBound,
-												broadcastConfig.value().SPRTLowerBound);
-										temp.setVariance(j, variance);
-										temp.setCBeta(j, cBeta);
-										// temp.setZScore(j, ZScore);
-										temp.setTheta1(j, theta1);
-										temp.setSPRT(j, SPRT);
-										temp.setSPRTActivationStatus(j, SPRTActivationStatus);
+									Matrix c = broadcastC.value().getRowSlice(j);
+									double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
+											broadcastXTXInverseXTList.value().get(i - 1),
+											broadcastXXTXInverseList.value().get(i - 1), D);
+									// double SandwichVariance = Numerical.computeVarianceUsingMKLSparseRoutine1(c,
+									// X, D);
+									// double variance = computeVariance(c, broadcastXList.value().get(i-1), D);
+									// double variance = computeVarianceSandwich(c,
+									// broadcastXTXInverseList.value().get(i-1), broadcastXList.value().get(i-1),
+									// D);
+									// double sigmaHatSquare = estimateSigmaHatSquare(boldResponseRaw,
+									// broadcastXList.value().get(i-1), beta, i, broadcastConfig.value().COL);
+									// double variance = computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c,
+									// broadcastXTXInverseList.value().get(i-1));
+									double cBeta = computeCBeta(c, beta);
+									// double ZScore = computeZ(cBeta, variance);
+									// double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
+									double theta1 = broadcastTheta1.value()[distributedDataset.getID()];
+									double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1,
+											variance);
+									int SPRTActivationStatus = computeActivationStatus(SPRT,
+											broadcastConfig.value().SPRTUpperBound,
+											broadcastConfig.value().SPRTLowerBound);
+									temp.setVariance(j, variance);
+									temp.setCBeta(j, cBeta);
+									// temp.setZScore(j, ZScore);
+									temp.setTheta1(j, theta1);
+									temp.setSPRT(j, SPRT);
+									temp.setSPRTActivationStatus(j, SPRTActivationStatus);
 
-										// forecasting using confidence interval
+									// forecasting using confidence interval
 
-										// for(int k = i; k < broadcastConfig.value().ROW; k++){
-										// double forecastedVariance =
-										// computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c,
-										// broadcastXTXInverseList.value().get(k));
-										// // double forecastedZScore = computeZ(cBeta, forecastedVariance);
-										// //double forecastedTheta1 = broadcastConfig.value().ZScore *
-										// Math.sqrt(forecastedVariance);
-										// int forecastedSPRTActivationStatus = evaluateConfidenceInterval(cBeta,
-										// forecastedVariance, 1.96, theta1);
-										// temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
-										// }
+									// for(int k = i; k < broadcastConfig.value().ROW; k++){
+									// double forecastedVariance =
+									// computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c,
+									// broadcastXTXInverseList.value().get(k));
+									// // double forecastedZScore = computeZ(cBeta, forecastedVariance);
+									// //double forecastedTheta1 = broadcastConfig.value().ZScore *
+									// Math.sqrt(forecastedVariance);
+									// int forecastedSPRTActivationStatus = evaluateConfidenceInterval(cBeta,
+									// forecastedVariance, 1.96, theta1);
+									// temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
+									// }
 
-										// forecasting using SPRT
+									// forecasting using SPRT
 
-										// for (int k = i; k < broadcastConfig.value().ROW; k++) {
-										// double forecastedVariance =
-										// Numerical.computeVarianceUsingMKLSparseRoutine3(c,
-										// broadcastXTXInverseXTList.value().get(k),
-										// broadcastXXTXInverseList.value().get(k), D);
-										// // double forecastedVariance =
-										// // computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c,
-										// // broadcastXTXInverseList.value().get(k));
-										// // double forecastedZScore = computeZ(cBeta, forecastedVariance);
-										// // double forecastedTheta1 = broadcastConfig.value().ZScore *
-										// // Math.sqrt(forecastedVariance);
-										// double forecastedSPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0,
-										// theta1, forecastedVariance);
-										// int forecastedSPRTActivationStatus = computeActivationStatus(forecastedSPRT,
-										// broadcastConfig.value().SPRTUpperBound,
-										// broadcastConfig.value().SPRTLowerBound);
-										// temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
-										// }
+									// for (int k = i; k < broadcastConfig.value().ROW; k++) {
+									// double forecastedVariance =
+									// Numerical.computeVarianceUsingMKLSparseRoutine3(c,
+									// broadcastXTXInverseXTList.value().get(k),
+									// broadcastXXTXInverseList.value().get(k), D);
+									// // double forecastedVariance =
+									// // computeVarianceUsingSigmaHatSquare(sigmaHatSquare, c,
+									// // broadcastXTXInverseList.value().get(k));
+									// // double forecastedZScore = computeZ(cBeta, forecastedVariance);
+									// // double forecastedTheta1 = broadcastConfig.value().ZScore *
+									// // Math.sqrt(forecastedVariance);
+									// double forecastedSPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0,
+									// theta1, forecastedVariance);
+									// int forecastedSPRTActivationStatus = computeActivationStatus(forecastedSPRT,
+									// broadcastConfig.value().SPRTUpperBound,
+									// broadcastConfig.value().SPRTLowerBound);
+									// temp.setForecastedActivationStatus(k, j, forecastedSPRTActivationStatus);
+									// }
 
-									}
-									ret.add(temp);
 								}
-
+								ret.add(temp);
 							}
 							return ret;
 						}
@@ -319,21 +312,18 @@ public class SparkDriverBatchAnalysis implements Serializable {
 						public ActivationResult call(ArrayList<CollectedDataset> collectedDatasets) {
 							int[][][] SPRTActivationCounter = new int[collectedDatasets.size()][broadcastC.value()
 									.getRow()][3];
-							for (int a = 0; a < broadcastDataExpand.value(); a++) {
-								for (int i = 0; i < collectedDatasets.size(); i++) {
-									for (int j = 0; j < broadcastC.value().getRow(); j++) {
-										if (collectedDatasets.get(i).getSPRTActivationStatus(j) == -1) {
-											SPRTActivationCounter[i][j][0]++;
-										} else if (collectedDatasets.get(i).getSPRTActivationStatus(j) == 0) {
-											SPRTActivationCounter[i][j][1]++;
-										} else {
-											SPRTActivationCounter[i][j][2]++;
-										}
-
+							for (int i = 0; i < collectedDatasets.size(); i++) {
+								for (int j = 0; j < broadcastC.value().getRow(); j++) {
+									if (collectedDatasets.get(i).getSPRTActivationStatus(j) == -1) {
+										SPRTActivationCounter[i][j][0]++;
+									} else if (collectedDatasets.get(i).getSPRTActivationStatus(j) == 0) {
+										SPRTActivationCounter[i][j][1]++;
+									} else {
+										SPRTActivationCounter[i][j][2]++;
 									}
+
 								}
 							}
-
 							// int[][][][] forecastedActivationCounter = new int[collectedDatasets
 							// .size()][broadcastConfig.value().ROW][broadcastC.value().getRow()][3];
 

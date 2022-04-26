@@ -49,6 +49,12 @@ public class Dataset implements Serializable {
 		}
 	}
 
+	public void addOneSimulationData() {
+		this.brainVolumes[currentScans] = new Brain(currentScans, x, y, z, true);
+		currentScans++;
+		isCompleted(this);
+	}
+
 	public void addMultipleScans(Brain[] volumes) {
 		Arrays.sort(volumes, (Brain a, Brain b) -> a.getScanNumber() - b.getScanNumber());
 		for (Brain volume : volumes)
@@ -66,22 +72,13 @@ public class Dataset implements Serializable {
 
 	public ArrayList<DistributedDataset> toDistrbutedDataset() {
 		ArrayList<DistributedDataset> ret = new ArrayList<>(this.x * this.y * this.z);
-		Random rand = new Random();
 		for (int x = 0; x < this.x; x++) {
 			for (int y = 0; y < this.y; y++) {
 				for (int z = 0; z < this.z; z++) {
 					int pos = getLocation(x, y, z);
-					// if(ROI[pos]) {
-					// ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, pos,
-					// ROI[pos]));
-					// }
-					// else{
-					double[] a = getBoldResponseAsArray(x, y, z);
-					for (int i = 0; i < a.length; i++) {
-						a[i] = rand.nextDouble();
+					if (ROI[pos]) {
+						ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, pos, ROI[pos]));
 					}
-					ret.add(new DistributedDataset(a, x, y, z, pos, true));
-					// }
 				}
 			}
 		}

@@ -60,6 +60,10 @@ public class Config implements Serializable {
 		}
 	}
 
+	public void expandeVolumeSize(int x) {
+		this.x *= x;
+	}
+
 	public void setContrasts(Contrasts contrasts) {
 		this.contrasts = contrasts;
 	}
