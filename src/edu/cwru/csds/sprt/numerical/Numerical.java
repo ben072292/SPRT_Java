@@ -181,7 +181,7 @@ public class Numerical {
 						double[] variance = new double[C.getRow()];
 						for (int i = 0; i < C.getRow(); i++) {
 							Matrix c = C.getRowSlice(i);
-							variance[i] = computeVarianceUsingMKLSparseRoutine2(c, XTXInverseXT, XXTXInverse, D);
+							variance[i] = computeVarianceUsingMKLSparseRoutine3(c, XTXInverseXT, XXTXInverse, D);
 							ret[i].setVoxel(Z * Math.sqrt(variance[i]), x, y, z);
 						}
 					}

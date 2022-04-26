@@ -27,7 +27,6 @@ import edu.cwru.csds.sprt.numerical.Numerical;
 import edu.cwru.csds.sprt.parameters.Contrasts;
 import edu.cwru.csds.sprt.parameters.DesignMatrix;
 import edu.cwru.csds.sprt.utilities.Config;
-import edu.cwru.csds.sprt.utilities.VolumeReader;
 
 /**
  * The Driver class using Apache Spark
@@ -39,7 +38,7 @@ public class BatchSimulation implements Serializable {
 
     public static void main(String[] args) {
         int batchSize = Integer.parseInt(args[0]);
-        int dataExpand = Integer.parseInt(args[1]);
+        int dataExpand = Integer.parseInt(args[1]) / 2;
         long start, end;
         PrintStream out;
         try {
@@ -62,7 +61,6 @@ public class BatchSimulation implements Serializable {
         DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.ROW, config.COL);
         Contrasts contrasts = new Contrasts("test/contrasts.txt");
         config.setContrasts(contrasts);
-        VolumeReader volumeReader = new VolumeReader();
         Matrix C = contrasts.toMatrix();
         Broadcast<Matrix> broadcastC = sc.broadcast(C);
         Matrix X;
@@ -71,7 +69,6 @@ public class BatchSimulation implements Serializable {
         // Generate simu
         System.out.println("Read in first scan to get some brain volume metadata");
         int scanNumber;
-        String BOLDPath = config.assemblyBOLDPath(1);
         Brain volume = new Brain(1, 36 * dataExpand, 128, 128, true);
         config.setVolumeSize(volume);
         Dataset dataset = new Dataset(config.ROW, config.getX(), config.getY(), config.getZ());
@@ -121,19 +118,11 @@ public class BatchSimulation implements Serializable {
         Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
         Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
 
-        double[] theta1 = new double[config.getX() * config.getY() * config.getZ()];
+        double[] theta1 = new double[config.getX() * config.getY() * config.getZ()]; // no need to compute theta1 for
+                                                                                     // simulation
         // Continue reading till reaching the K-th scan
         for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
             dataset.addOneSimulationData();
-
-            // formula update 09/01/2021: theta1 is only estimated once for all at scan K
-            if (scanNumber == config.K) {
-                Brain[] theta1Volume = Numerical.estimateTheta1(dataset, XList.get(config.K), C, config.ZScore,
-                        ROI);
-                for (int i = 0; i < theta1Volume.length; i++) {
-                    theta1[i] = theta1Volume[i].getVoxel(i);
-                }
-            }
         }
         Broadcast<double[]> broadcastTheta1 = sc.broadcast(theta1);
         // System.out.println(dataset.getVolume(config.K));
@@ -153,11 +142,11 @@ public class BatchSimulation implements Serializable {
 
             ArrayList<Brain> volumes = new ArrayList<>();
             for (; currentScanNumber < scanNumber + batchSize && currentScanNumber <= config.ROW; currentScanNumber++) {
-                BOLDPath = config.assemblyBOLDPath(currentScanNumber);
                 volumes.add(new Brain(currentScanNumber, config.getX(), config.getY(), config.getZ(), true));
             }
 
             Broadcast<ArrayList<Brain>> broadcastVolumes = sc.broadcast(volumes);
+            Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(volumes.size());
 
             distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>() {
                 public DistributedDataset call(DistributedDataset distributedDataset) {
@@ -171,8 +160,6 @@ public class BatchSimulation implements Serializable {
                     return distributedDataset;
                 }
             });
-
-            Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(volumes.size());
 
             JavaRDD<ArrayList<CollectedDataset>> collectedDatasets = distributedDataset
                     .map(new Function<DistributedDataset, ArrayList<CollectedDataset>>() {
