@@ -89,6 +89,30 @@ public class Dataset implements Serializable {
 		return ret;
 	}
 
+	public ArrayList<DistributedDataset> toDistrbutedDataset(int dataExpand) {
+		ArrayList<DistributedDataset> ret = new ArrayList<>(this.x * this.y * this.z);
+		Random rand = new Random();
+		for (int x = 0; x < this.x; x++) {
+			for (int y = 0; y < this.y; y++) {
+				for (int z = 0; z < this.z; z++) {
+					int pos = getLocation(x, y, z);
+					// if(ROI[pos]) {
+					// ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, pos,
+					// ROI[pos]));
+					// }
+					// else{
+					double[] a = getBoldResponseAsArray(x, y, z);
+					for (int i = 0; i < a.length; i++) {
+						a[i] = rand.nextDouble();
+					}
+					ret.add(new DistributedDataset(a, x, y, z, pos, true));
+					// }
+				}
+			}
+		}
+		return ret;
+	}
+
 	// getter
 	public int getTotalScanNumber() {
 		return this.totalScans;
