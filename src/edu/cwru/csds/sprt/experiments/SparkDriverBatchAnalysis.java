@@ -1,6 +1,6 @@
-package edu.cwru.csds.sprt;
+package edu.cwru.csds.sprt.experiments;
 
-import static edu.cwru.csds.sprt.Numerical.*;
+import static edu.cwru.csds.sprt.numerical.Numerical.*;
 import static org.bytedeco.mkl.global.mkl_rt.*;
 
 import java.io.FileNotFoundException;
@@ -16,6 +16,18 @@ import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.broadcast.Broadcast;
+
+import edu.cwru.csds.sprt.data.ActivationResult;
+import edu.cwru.csds.sprt.data.Brain;
+import edu.cwru.csds.sprt.data.CollectedDataset;
+import edu.cwru.csds.sprt.data.Dataset;
+import edu.cwru.csds.sprt.data.DistributedDataset;
+import edu.cwru.csds.sprt.numerical.Matrix;
+import edu.cwru.csds.sprt.numerical.Numerical;
+import edu.cwru.csds.sprt.parameters.Contrasts;
+import edu.cwru.csds.sprt.parameters.DesignMatrix;
+import edu.cwru.csds.sprt.utilities.Config;
+import edu.cwru.csds.sprt.utilities.VolumeReader;
 
 /**
  * The Driver class using Apache Spark

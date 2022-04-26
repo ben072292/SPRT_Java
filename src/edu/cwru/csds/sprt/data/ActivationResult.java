@@ -1,4 +1,4 @@
-package edu.cwru.csds.sprt;
+package edu.cwru.csds.sprt.data;
 
 import java.io.Serializable;
 

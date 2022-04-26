@@ -1,9 +1,12 @@
-package edu.cwru.csds.sprt;
+package edu.cwru.csds.sprt.data;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
+
+import edu.cwru.csds.sprt.exceptions.VolumeNotMatchException;
+import edu.cwru.csds.sprt.numerical.Matrix;
 
 /**
  * Stores and handles data read from bold response files
@@ -21,9 +24,6 @@ public class Dataset implements Serializable {
 	private boolean[] ROI;
 
 	public Dataset(int scans, int x, int y, int z) {
-		assert x > 0 : "X cannot be 0!";
-		assert y > 0 : "Y cannot be 0!";
-		assert z > 0 : "Z cannot be 0!";
 		this.x = x;
 		this.y = y;
 		this.z = z;
@@ -37,7 +37,6 @@ public class Dataset implements Serializable {
 	// Only allow sequential add
 	public void addOneScan(Brain volume) {
 		try {
-			assert (currentScans == volume.getScanNumber() - 1) : "Need to add scan sequentially!";
 			if (this.x != volume.getX() ||
 					this.y != volume.getY() ||
 					this.z != volume.getZ())
@@ -180,17 +179,14 @@ public class Dataset implements Serializable {
 
 	// setter
 	public void setX(int x) {
-		assert x > 0 : "X cannot be 0!";
 		this.x = x;
 	}
 
 	public void setY(int y) {
-		assert y > 0 : "Y cannot be 0!";
 		this.y = y;
 	}
 
 	public void setZ(int z) {
-		assert z > 0 : "Z cannot be 0!";
 		this.z = z;
 	}
 
