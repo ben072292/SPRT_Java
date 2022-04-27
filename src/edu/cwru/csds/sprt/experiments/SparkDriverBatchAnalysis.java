@@ -120,7 +120,7 @@ public class SparkDriverBatchAnalysis implements Serializable {
 		Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
 		Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
 
-		double[] theta1 = new double[config.getX() * config.getY() * config.getZ()];
+		double[][] theta1 = new double[1][1];
 		// Continue reading till reaching the K-th scan
 		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
@@ -130,14 +130,10 @@ public class SparkDriverBatchAnalysis implements Serializable {
 
 			// formula update 09/01/2021: theta1 is only estimated once for all at scan K
 			if (scanNumber == config.K) {
-				Brain[] theta1Volume = Numerical.estimateTheta1(dataset, XList.get(config.K), C, config.ZScore,
-						ROI);
-				for (int i = 0; i < theta1Volume.length; i++) {
-					theta1[i] = theta1Volume[i].getVoxel(i);
-				}
+				theta1 = Numerical.estimateTheta1(dataset, XList.get(config.K), C, config.ZScore, ROI);
 			}
 		}
-		Broadcast<double[]> broadcastTheta1 = sc.broadcast(theta1);
+		Broadcast<double[][]> broadcastTheta1 = sc.broadcast(theta1);
 		// System.out.println(dataset.getVolume(config.K));
 
 		// Prepare
@@ -210,7 +206,7 @@ public class SparkDriverBatchAnalysis implements Serializable {
 									double cBeta = computeCBeta(c, beta);
 									// double ZScore = computeZ(cBeta, variance);
 									// double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
-									double theta1 = broadcastTheta1.value()[distributedDataset.getID()];
+									double theta1 = broadcastTheta1.value()[j][distributedDataset.getID()];
 									double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1,
 											variance);
 									int SPRTActivationStatus = computeActivationStatus(SPRT,

@@ -14,7 +14,7 @@ import edu.cwru.csds.sprt.parameters.Contrasts;
  *
  */
 public class Config implements Serializable {
-	public int ROW = 238; // total scans in the session
+	public int ROW = 88; // total scans in the session
 	public int COL = 8; // # of columns in design matrix / contrasts
 	public int K = 78; // first K blocks used to collect data to estimate theta 1
 	public double ZScore = 3.12; // Z values used for estimating theta 1

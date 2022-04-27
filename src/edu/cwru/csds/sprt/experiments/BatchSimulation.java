@@ -42,7 +42,7 @@ public class BatchSimulation implements Serializable {
         long start, end;
         PrintStream out;
         try {
-            out = new PrintStream(new FileOutputStream("output.txt"));
+            out = new PrintStream(new FileOutputStream("output " + dataExpand + ".txt"));
             System.setOut(out);
         } catch (FileNotFoundException e) {
             e.printStackTrace();

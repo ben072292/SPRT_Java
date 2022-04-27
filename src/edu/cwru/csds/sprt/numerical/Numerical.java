@@ -1,6 +1,5 @@
 package edu.cwru.csds.sprt.numerical;
 
-import edu.cwru.csds.sprt.data.Brain;
 import edu.cwru.csds.sprt.data.Dataset;
 import edu.cwru.csds.sprt.exceptions.MatrixComputationErrorException;
 
@@ -156,11 +155,8 @@ public class Numerical {
 			return 0;
 	}
 
-	public static Brain[] estimateTheta1(Dataset dataset, Matrix X, Matrix C, double Z, boolean[] ROI) {
-		Brain ret[] = new Brain[C.getRow()];
-		for (int i = 0; i < C.getRow(); i++) {
-			ret[i] = new Brain(dataset.getCurrentScanNumber(), dataset.getX(), dataset.getY(), dataset.getZ());
-		}
+	public static double[][] estimateTheta1(Dataset dataset, Matrix X, Matrix C, double Z, boolean[] ROI) {
+		double[][] ret = new double[C.getRow()][dataset.getX() * dataset.getY() * dataset.getZ()];
 		Matrix XTXInverse = computeXTXInverse(X);
 		Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
 		Matrix XXTXInverse = X.multiply(XTXInverse);
@@ -182,7 +178,8 @@ public class Numerical {
 						for (int i = 0; i < C.getRow(); i++) {
 							Matrix c = C.getRowSlice(i);
 							variance[i] = computeVarianceUsingMKLSparseRoutine3(c, XTXInverseXT, XXTXInverse, D);
-							ret[i].setVoxel(Z * Math.sqrt(variance[i]), x, y, z);
+							ret[i][x * dataset.getY() * dataset.getZ() + y * dataset.getZ() + z] = Z
+									* Math.sqrt(variance[i]);
 						}
 					}
 				}
