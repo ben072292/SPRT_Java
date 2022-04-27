@@ -24,6 +24,9 @@ public class Dataset implements Serializable {
 	private boolean[] ROI;
 
 	public Dataset(int scans, int x, int y, int z) {
+		assert x > 0 : "X cannot be 0!";
+		assert y > 0 : "Y cannot be 0!";
+		assert z > 0 : "Z cannot be 0!";
 		this.x = x;
 		this.y = y;
 		this.z = z;
@@ -37,6 +40,7 @@ public class Dataset implements Serializable {
 	// Only allow sequential add
 	public void addOneScan(Brain volume) {
 		try {
+			assert (currentScans == volume.getScanNumber() - 1) : "Need to add scan sequentially!";
 			if (this.x != volume.getX() ||
 					this.y != volume.getY() ||
 					this.z != volume.getZ())
@@ -47,12 +51,6 @@ public class Dataset implements Serializable {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-	}
-
-	public void addOneSimulationData() {
-		this.brainVolumes[currentScans] = new Brain(currentScans, x, y, z, true);
-		currentScans++;
-		isCompleted(this);
 	}
 
 	public void addMultipleScans(Brain[] volumes) {
@@ -72,13 +70,22 @@ public class Dataset implements Serializable {
 
 	public ArrayList<DistributedDataset> toDistrbutedDataset() {
 		ArrayList<DistributedDataset> ret = new ArrayList<>(this.x * this.y * this.z);
+		Random rand = new Random();
 		for (int x = 0; x < this.x; x++) {
 			for (int y = 0; y < this.y; y++) {
 				for (int z = 0; z < this.z; z++) {
 					int pos = getLocation(x, y, z);
-					if (ROI[pos]) {
-						ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, pos, ROI[pos]));
+					// if(ROI[pos]) {
+					// ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, pos,
+					// ROI[pos]));
+					// }
+					// else{
+					double[] a = getBoldResponseAsArray(x, y, z);
+					for (int i = 0; i < a.length; i++) {
+						a[i] = rand.nextDouble();
 					}
+					ret.add(new DistributedDataset(a, x, y, z, pos, true));
+					// }
 				}
 			}
 		}
@@ -176,14 +183,17 @@ public class Dataset implements Serializable {
 
 	// setter
 	public void setX(int x) {
+		assert x > 0 : "X cannot be 0!";
 		this.x = x;
 	}
 
 	public void setY(int y) {
+		assert y > 0 : "Y cannot be 0!";
 		this.y = y;
 	}
 
 	public void setZ(int z) {
+		assert z > 0 : "Z cannot be 0!";
 		this.z = z;
 	}
 
