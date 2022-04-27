@@ -38,7 +38,7 @@ public class BatchSimulation implements Serializable {
 
     public static void main(String[] args) {
         int batchSize = Integer.parseInt(args[0]);
-        int dataExpand = Integer.parseInt(args[1]) / 2;
+        int dataExpand = Integer.parseInt(args[1]);
         long start, end;
         PrintStream out;
         try {
@@ -118,13 +118,10 @@ public class BatchSimulation implements Serializable {
         Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
         Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
 
-        double[] theta1 = new double[config.getX() * config.getY() * config.getZ()]; // no need to compute theta1 for
-                                                                                     // simulation
         // Continue reading till reaching the K-th scan
         for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
             dataset.addOneSimulationData();
         }
-        Broadcast<double[]> broadcastTheta1 = sc.broadcast(theta1);
         // System.out.println(dataset.getVolume(config.K));
 
         // Prepare
@@ -195,7 +192,7 @@ public class BatchSimulation implements Serializable {
                                     double cBeta = computeCBeta(c, beta);
                                     // double ZScore = computeZ(cBeta, variance);
                                     // double theta1 = broadcastConfig.value().ZScore * Math.sqrt(variance);
-                                    double theta1 = broadcastTheta1.value()[distributedDataset.getID()];
+                                    double theta1 = 0.0;
                                     double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, theta1,
                                             variance);
                                     int SPRTActivationStatus = computeActivationStatus(SPRT,
