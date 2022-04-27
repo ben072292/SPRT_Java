@@ -35,7 +35,7 @@ import edu.cwru.csds.sprt.utilities.VolumeReader;
  * @author Ben
  *
  */
-public class BatchSimulation implements Serializable {
+public class Simulation implements Serializable {
 
     public static void main(String[] args) {
         int batchSize = Integer.parseInt(args[0]);
@@ -74,11 +74,9 @@ public class BatchSimulation implements Serializable {
         String BOLDPath = config.assemblyBOLDPath(1);
         Brain volume = volumeReader.readFile(BOLDPath, 1);
         config.setVolumeSize(volume);
-        Dataset dataset = new Dataset(config.ROW, config.getX(), config.getY(), config.getZ());
-        dataset.addOneScan(volume);
+        Dataset dataset = new Dataset(config.getX(), config.getY(), config.getZ());
+        dataset.add(volume);
         System.out.println("Complete");
-        boolean[] ROI = config.getROI();
-        dataset.setROI(ROI);
 
         // setup broadcast variables
         Broadcast<Config> broadcastConfig = sc.broadcast(config);
@@ -100,11 +98,6 @@ public class BatchSimulation implements Serializable {
                 Matrix XTXInverse = computeXTXInverse(X);
                 Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
                 Matrix XXTXInverse = X.multiply(XTXInverse);
-                // double[] CTXTXInverseC = new double[C.getRow()];
-                // for (int j = 0; j < C.getRow(); j++) {
-                // Matrix c = C.getRowSlice(j);
-                // CTXTXInverseC[j] = c.transposeMultiply(XTXInverse).multiply(c).get();
-                // }
                 double[] H = computeH(XXTXInverse, X);
                 XList.add(X);
                 XTXInverseList.add(XTXInverse);
@@ -115,8 +108,6 @@ public class BatchSimulation implements Serializable {
             }
         }
         Broadcast<ArrayList<Matrix>> broadcastXList = sc.broadcast(XList);
-        // Broadcast<ArrayList<Matrix>> broadcastXTXInverseList =
-        // sc.broadcast(XTXInverseList);
         Broadcast<ArrayList<Matrix>> broadcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
         Broadcast<ArrayList<Matrix>> broadcastXXTXInverseList = sc.broadcast(XXTXInverseList);
         Broadcast<ArrayList<double[]>> broadcastHList = sc.broadcast(HList);
@@ -126,7 +117,7 @@ public class BatchSimulation implements Serializable {
             System.out.println("Reading Scan " + scanNumber);
             BOLDPath = config.assemblyBOLDPath(scanNumber);
             volume = volumeReader.readFile(BOLDPath, scanNumber);
-            dataset.addOneScan(volume);
+            dataset.add(volume);
         }
         // System.out.println(dataset.getVolume(config.K));
 
@@ -134,11 +125,11 @@ public class BatchSimulation implements Serializable {
         System.out.println(
                 new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
 
-        JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset());
+        JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset(config.getROI()));
 
         start = System.nanoTime();
 
-        while (scanNumber <= 79) {
+        while (scanNumber <= 99) {
             int currentScanNumber = scanNumber;
 
             Broadcast<Integer> broadcastStartScanNumber = sc.broadcast(scanNumber);

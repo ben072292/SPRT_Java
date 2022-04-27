@@ -35,7 +35,7 @@ import edu.cwru.csds.sprt.utilities.VolumeReader;
  * @author Ben
  *
  */
-public class SparkDriverBatchAnalysis implements Serializable {
+public class RealExperiment implements Serializable {
 
 	public static void main(String[] args) {
 		int batchSize = Integer.parseInt(args[0]);
@@ -73,11 +73,9 @@ public class SparkDriverBatchAnalysis implements Serializable {
 		String BOLDPath = config.assemblyBOLDPath(1);
 		Brain volume = volumeReader.readFile(BOLDPath, 1);
 		config.setVolumeSize(volume);
-		Dataset dataset = new Dataset(config.ROW, config.getX(), config.getY(), config.getZ());
-		dataset.addOneScan(volume);
+		Dataset dataset = new Dataset(config.getX(), config.getY(), config.getZ());
+		dataset.add(volume);
 		System.out.println("Complete");
-		boolean[] ROI = config.getROI();
-		dataset.setROI(ROI);
 
 		// setup broadcast variables
 		Broadcast<Config> broadcastConfig = sc.broadcast(config);
@@ -126,11 +124,11 @@ public class SparkDriverBatchAnalysis implements Serializable {
 			System.out.println("Reading Scan " + scanNumber);
 			BOLDPath = config.assemblyBOLDPath(scanNumber);
 			volume = volumeReader.readFile(BOLDPath, scanNumber);
-			dataset.addOneScan(volume);
+			dataset.add(volume);
 
 			// formula update 09/01/2021: theta1 is only estimated once for all at scan K
 			if (scanNumber == config.K) {
-				theta1 = Numerical.estimateTheta1(dataset, XList.get(config.K), C, config.ZScore, ROI);
+				theta1 = Numerical.estimateTheta1(dataset, XList.get(config.K), C, config.ZScore, config.getROI());
 			}
 		}
 		Broadcast<double[][]> broadcastTheta1 = sc.broadcast(theta1);
@@ -140,7 +138,7 @@ public class SparkDriverBatchAnalysis implements Serializable {
 		System.out.println(
 				new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
 
-		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset());
+		JavaRDD<DistributedDataset> distributedDataset = sc.parallelize(dataset.toDistrbutedDataset(config.getROI()));
 
 		start = System.nanoTime();
 

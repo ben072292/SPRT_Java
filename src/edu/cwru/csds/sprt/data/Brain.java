@@ -17,22 +17,19 @@ import edu.cwru.csds.sprt.exceptions.VolumeNotMatchException;
  *
  */
 public class Brain implements Serializable {
-	private int scanNumber = 0;
 	private int x = 0;
 	private int y = 0;
 	private int z = 0;
 	private double[] voxels;
 
-	public Brain(int scanNum, int x, int y, int z) {
-		this.scanNumber = scanNum;
+	public Brain(int x, int y, int z) {
 		this.x = x;
 		this.y = y;
 		this.z = z;
 		this.voxels = new double[x * y * z];
 	}
 
-	public Brain(int scanNum, int x, int y, int z, boolean random) {
-		this.scanNumber = scanNum;
+	public Brain(int x, int y, int z, boolean random) {
 		this.x = x;
 		this.y = y;
 		this.z = z;
@@ -44,7 +41,6 @@ public class Brain implements Serializable {
 	}
 
 	public Brain(Brain volume) {
-		this.scanNumber = volume.getScanNumber();
 		this.x = volume.getX();
 		this.y = volume.getY();
 		this.z = volume.getZ();
@@ -52,10 +48,6 @@ public class Brain implements Serializable {
 	}
 
 	// getter
-	public int getScanNumber() {
-		return this.scanNumber;
-	}
-
 	public int getX() {
 		return this.x;
 	}
@@ -90,10 +82,6 @@ public class Brain implements Serializable {
 	}
 
 	// setter
-	public void setScanNumber(int scanNumber) {
-		this.scanNumber = scanNumber;
-	}
-
 	public void setX(int x) {
 		this.x = x;
 	}

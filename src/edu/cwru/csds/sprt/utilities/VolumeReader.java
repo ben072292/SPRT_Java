@@ -28,7 +28,7 @@ public class VolumeReader {
 				reader.close();
 				throw new FileFormatNotCorrectException();
 			}
-			Brain ret = new Brain(scanNumber, this.x, this.y, this.z);
+			Brain ret = new Brain(this.x, this.y, this.z);
 			line = reader.readLine();
 			int x = 0;
 			int y = 0;
