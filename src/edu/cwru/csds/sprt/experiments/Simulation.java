@@ -9,7 +9,6 @@ import java.io.PrintStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.SparkContext;
@@ -27,7 +26,6 @@ import edu.cwru.csds.sprt.numerical.Numerical;
 import edu.cwru.csds.sprt.parameters.Contrasts;
 import edu.cwru.csds.sprt.parameters.DesignMatrix;
 import edu.cwru.csds.sprt.utilities.Config;
-import edu.cwru.csds.sprt.utilities.VolumeReader;
 
 /**
  * The Driver class using Apache Spark
@@ -62,7 +60,6 @@ public class Simulation implements Serializable {
         DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.ROW, config.COL);
         Contrasts contrasts = new Contrasts("test/contrasts.txt");
         config.setContrasts(contrasts);
-        VolumeReader volumeReader = new VolumeReader();
         Matrix C = contrasts.toMatrix();
         Broadcast<Matrix> broadcastC = sc.broadcast(C);
         Matrix X;
@@ -71,8 +68,7 @@ public class Simulation implements Serializable {
         // Read in first scan to get some brain volume metadata
         System.out.println("Read in first scan to get some brain volume metadata");
         int scanNumber;
-        String BOLDPath = config.assemblyBOLDPath(1);
-        Brain volume = volumeReader.readFile(BOLDPath, 1);
+        Brain volume = new Brain(dataExpand, 100, 100, true);
         config.setVolumeSize(volume);
         Dataset dataset = new Dataset(config.getX(), config.getY(), config.getZ());
         dataset.add(volume);
@@ -114,9 +110,6 @@ public class Simulation implements Serializable {
 
         // Continue reading till reaching the K-th scan
         for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
-            System.out.println("Reading Scan " + scanNumber);
-            BOLDPath = config.assemblyBOLDPath(scanNumber);
-            volume = volumeReader.readFile(BOLDPath, scanNumber);
             dataset.add(volume);
         }
         // System.out.println(dataset.getVolume(config.K));
@@ -136,34 +129,30 @@ public class Simulation implements Serializable {
 
             ArrayList<Brain> volumes = new ArrayList<>();
             for (; currentScanNumber < scanNumber + batchSize && currentScanNumber <= config.ROW; currentScanNumber++) {
-                BOLDPath = config.assemblyBOLDPath(currentScanNumber);
-                volumes.add(volumeReader.readFile(BOLDPath, currentScanNumber));
+                volumes.add(volume);
             }
 
             Broadcast<ArrayList<Brain>> broadcastVolumes = sc.broadcast(volumes);
-            Broadcast<Integer> broadcastDataExpand = sc.broadcast(dataExpand);
 
             distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>() {
 
                 public DistributedDataset call(DistributedDataset distributedDataset) {
-                    for (int a = 0; a < broadcastDataExpand.value(); a++) {
-                        DistributedDataset temp;
-                        for (int i = 0; i < broadcastVolumes.value().size(); i++) {
-                            temp = new DistributedDataset(
-                                    ArrayUtils.add(distributedDataset.getBoldResponse(),
-                                            broadcastVolumes.value().get(i).getVoxel(distributedDataset.getX(),
-                                                    distributedDataset.getY(), distributedDataset.getZ())),
-                                    distributedDataset);
-                        }
-                        temp = null;
+
+                    int a = distributedDataset.getBoldResponse().length;
+                    int b = broadcastVolumes.value().size();
+                    int x = distributedDataset.getX();
+                    int y = distributedDataset.getY();
+                    int z = distributedDataset.getZ();
+
+                    double[] newBoldResponse = new double[a + b];
+                    for (int i = 0; i < a; i++) {
+                        newBoldResponse[i] = distributedDataset.getBoldResponse()[i];
                     }
-                    for (int i = 0; i < broadcastVolumes.value().size(); i++) {
-                        distributedDataset = new DistributedDataset(ArrayUtils.add(distributedDataset.getBoldResponse(),
-                                broadcastVolumes.value().get(i).getVoxel(distributedDataset.getX(),
-                                        distributedDataset.getY(), distributedDataset.getZ())),
-                                distributedDataset);
+                    for (int i = 0; i < b; i++) {
+                        newBoldResponse[a + i] = broadcastVolumes.value().get(i).getVoxel(x, y, z);
                     }
-                    return distributedDataset;
+
+                    return new DistributedDataset(newBoldResponse, x, y, z);
                 }
 
             });
@@ -175,40 +164,39 @@ public class Simulation implements Serializable {
                         public ArrayList<CollectedDataset> call(DistributedDataset distributedDataset) {
                             MKL_Set_Num_Threads(1);
                             ArrayList<CollectedDataset> ret = new ArrayList<>();
-                            for (int a = 0; a < broadcastDataExpand.value(); a++) {
-                                ret.clear();
-                                for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber.value()
-                                        + broadcastRealBatchSize.value(); i++) {
-                                    double[] boldResponseRaw = new double[i];
-                                    System.arraycopy(distributedDataset.getBoldResponse(), 0, boldResponseRaw, 0, i);
-                                    Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
-                                    CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
-                                    Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i - 1),
-                                            boldResponse);
-                                    double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1), beta);
-                                    Matrix D = generateD(R, broadcastHList.value().get(i - 1));
-                                    for (int j = 0; j < broadcastC.value().getRow(); j++) {
 
-                                        Matrix c = broadcastC.value().getRowSlice(j);
-                                        double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
-                                                broadcastXTXInverseXTList.value().get(i - 1),
-                                                broadcastXXTXInverseList.value().get(i - 1), D);
-                                        double cBeta = computeCBeta(c, beta);
-                                        double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, 0.0,
-                                                variance);
-                                        int SPRTActivationStatus = computeActivationStatus(SPRT,
-                                                broadcastConfig.value().SPRTUpperBound,
-                                                broadcastConfig.value().SPRTLowerBound);
-                                        temp.setVariance(j, variance);
-                                        temp.setCBeta(j, cBeta);
-                                        temp.setTheta1(j, 0.0);
-                                        temp.setSPRT(j, SPRT);
-                                        temp.setSPRTActivationStatus(j, SPRTActivationStatus);
-                                    }
-                                    ret.add(temp);
+                            ret.clear();
+                            for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber.value()
+                                    + broadcastRealBatchSize.value(); i++) {
+                                double[] boldResponseRaw = new double[i];
+                                System.arraycopy(distributedDataset.getBoldResponse(), 0, boldResponseRaw, 0, i);
+                                Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
+                                CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
+                                Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i - 1),
+                                        boldResponse);
+                                double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1), beta);
+                                Matrix D = generateD(R, broadcastHList.value().get(i - 1));
+                                for (int j = 0; j < broadcastC.value().getRow(); j++) {
+
+                                    Matrix c = broadcastC.value().getRowSlice(j);
+                                    double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
+                                            broadcastXTXInverseXTList.value().get(i - 1),
+                                            broadcastXXTXInverseList.value().get(i - 1), D);
+                                    double cBeta = computeCBeta(c, beta);
+                                    double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, 0.0,
+                                            variance);
+                                    int SPRTActivationStatus = computeActivationStatus(SPRT,
+                                            broadcastConfig.value().SPRTUpperBound,
+                                            broadcastConfig.value().SPRTLowerBound);
+                                    temp.setVariance(j, variance);
+                                    temp.setCBeta(j, cBeta);
+                                    temp.setTheta1(j, 0.0);
+                                    temp.setSPRT(j, SPRT);
+                                    temp.setSPRTActivationStatus(j, SPRTActivationStatus);
                                 }
-
+                                ret.add(temp);
                             }
+
                             return ret;
                         }
                     });
@@ -220,20 +208,20 @@ public class Simulation implements Serializable {
                         public ActivationResult call(ArrayList<CollectedDataset> collectedDatasets) {
                             int[][][] SPRTActivationCounter = new int[collectedDatasets.size()][broadcastC.value()
                                     .getRow()][3];
-                            for (int a = 0; a < broadcastDataExpand.value(); a++) {
-                                for (int i = 0; i < collectedDatasets.size(); i++) {
-                                    for (int j = 0; j < broadcastC.value().getRow(); j++) {
-                                        if (collectedDatasets.get(i).getSPRTActivationStatus(j) == -1) {
-                                            SPRTActivationCounter[i][j][0]++;
-                                        } else if (collectedDatasets.get(i).getSPRTActivationStatus(j) == 0) {
-                                            SPRTActivationCounter[i][j][1]++;
-                                        } else {
-                                            SPRTActivationCounter[i][j][2]++;
-                                        }
 
+                            for (int i = 0; i < collectedDatasets.size(); i++) {
+                                for (int j = 0; j < broadcastC.value().getRow(); j++) {
+                                    if (collectedDatasets.get(i).getSPRTActivationStatus(j) == -1) {
+                                        SPRTActivationCounter[i][j][0]++;
+                                    } else if (collectedDatasets.get(i).getSPRTActivationStatus(j) == 0) {
+                                        SPRTActivationCounter[i][j][1]++;
+                                    } else {
+                                        SPRTActivationCounter[i][j][2]++;
                                     }
+
                                 }
                             }
+
                             return new ActivationResult(SPRTActivationCounter);
                         }
                     }).reduce((a, b) -> {

@@ -16,19 +16,15 @@ public class DistributedDataset implements Serializable {
 	private int x;
 	private int y;
 	private int z;
-	private int id;
-	private boolean withinROI;
 
 	public DistributedDataset() {
 	}
 
-	public DistributedDataset(double[] boldResponse, int x, int y, int z, int id, boolean withinROI) {
+	public DistributedDataset(double[] boldResponse, int x, int y, int z) {
 		this.boldResponse = boldResponse;
 		this.x = x;
 		this.y = y;
 		this.z = z;
-		this.id = id;
-		this.withinROI = withinROI;
 	}
 
 	public DistributedDataset(double[] newBoldResponse, DistributedDataset oldDistributedDataset) {
@@ -36,8 +32,6 @@ public class DistributedDataset implements Serializable {
 		this.x = oldDistributedDataset.x;
 		this.y = oldDistributedDataset.y;
 		this.z = oldDistributedDataset.z;
-		this.id = oldDistributedDataset.id;
-		this.withinROI = oldDistributedDataset.withinROI;
 	}
 
 	public void setBoldResponse(double[] boldResponse) {
@@ -62,13 +56,5 @@ public class DistributedDataset implements Serializable {
 
 	public int getZ() {
 		return this.z;
-	}
-
-	public int getID() {
-		return this.id;
-	}
-
-	public boolean getWithinROI() {
-		return this.withinROI;
 	}
 }

@@ -1,6 +1,7 @@
 package edu.cwru.csds.sprt.utilities;
 
 import java.io.Serializable;
+import java.util.BitSet;
 
 import edu.cwru.csds.sprt.data.Brain;
 import edu.cwru.csds.sprt.exceptions.VolumeNotMatchException;
@@ -33,7 +34,7 @@ public class Config implements Serializable {
 	private int x = 0;
 	private int y = 0;
 	private int z = 0;
-	private boolean[] ROI; // default to false
+	private BitSet ROI; // default to false
 
 	public Config() {
 	}
@@ -68,11 +69,11 @@ public class Config implements Serializable {
 		this.contrasts = contrasts;
 	}
 
-	public boolean[] setROI(Brain volume) {
-		boolean[] ROI = new boolean[volume.getX() * volume.getY() * volume.getZ()];
+	public BitSet setROI(Brain volume) {
+		BitSet ROI = new BitSet(volume.getX() * volume.getY() * volume.getZ());
 		for (int i = 0; i < volume.getX() * volume.getY() * volume.getZ(); i++) {
 			if (volume.getVoxel(i) != 0) {
-				ROI[i] = true;
+				ROI.set(i);
 			}
 		}
 		return ROI;
@@ -90,7 +91,7 @@ public class Config implements Serializable {
 		return this.z;
 	}
 
-	public boolean[] getROI() {
+	public BitSet getROI() {
 		return this.ROI;
 	}
 

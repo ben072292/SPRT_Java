@@ -2,6 +2,7 @@ package edu.cwru.csds.sprt.data;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.BitSet;
 
 import edu.cwru.csds.sprt.numerical.Matrix;
 
@@ -25,18 +26,28 @@ public class Dataset implements Serializable {
 		this.brainVolumes = new ArrayList<>();
 	}
 
+	public Dataset(ArrayList<Brain> volumes) {
+		this.x = volumes.get(0).getX();
+		this.y = volumes.get(0).getY();
+		this.z = volumes.get(0).getZ();
+		for (Brain volume : volumes) {
+			add(volume);
+		}
+	}
+
 	// Only allow sequential add
 	public void add(Brain volume) {
 		brainVolumes.add(volume);
 	}
 
-	public ArrayList<DistributedDataset> toDistrbutedDataset(boolean[] ROI) {
-		ArrayList<DistributedDataset> ret = new ArrayList<>(this.x * this.y * this.z);
+	public ArrayList<DistributedDataset> toDistrbutedDataset(BitSet ROI) {
+		ArrayList<DistributedDataset> ret = new ArrayList<>(ROI.cardinality());
 		for (int x = 0; x < this.x; x++) {
 			for (int y = 0; y < this.y; y++) {
 				for (int z = 0; z < this.z; z++) {
-					int pos = getLocation(x, y, z);
-					ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z, pos, ROI[pos]));
+					if (ROI.get(getLocation(x, y, z))) {
+						ret.add(new DistributedDataset(getBoldResponseAsArray(x, y, z), x, y, z));
+					}
 				}
 			}
 		}
