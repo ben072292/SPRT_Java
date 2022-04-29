@@ -234,11 +234,11 @@ public class Simulation implements Serializable {
                     System.out.println("Contrast "
                             + (j + 1)
                             + ": Cross Upper: "
-                            + result.getSPRTActivationResult()[i][j][2]
+                            + result.getSPRTActivationResult()[i][j][2] * 36
                             + ", Cross Lower: "
-                            + result.getSPRTActivationResult()[i][j][0]
+                            + result.getSPRTActivationResult()[i][j][0] * 36
                             + ", Within Bound: "
-                            + result.getSPRTActivationResult()[i][j][1]);
+                            + result.getSPRTActivationResult()[i][j][1] * 36);
                 }
             }
 
