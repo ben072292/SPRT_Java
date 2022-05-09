@@ -68,7 +68,7 @@ public class Simulation implements Serializable {
         // Read in first scan to get some brain volume metadata
         System.out.println("Read in first scan to get some brain volume metadata");
         int scanNumber;
-        Brain volume = new Brain(dataExpand, 100, 100, true);
+        Brain volume = new Brain(dataExpand * 36, 100, 100, true);
         config.setVolumeSize(volume);
         Dataset dataset = new Dataset(config.getX(), config.getY(), config.getZ());
         dataset.add(volume);
@@ -234,11 +234,11 @@ public class Simulation implements Serializable {
                     System.out.println("Contrast "
                             + (j + 1)
                             + ": Cross Upper: "
-                            + result.getSPRTActivationResult()[i][j][2] * 36
+                            + result.getSPRTActivationResult()[i][j][2]
                             + ", Cross Lower: "
-                            + result.getSPRTActivationResult()[i][j][0] * 36
+                            + result.getSPRTActivationResult()[i][j][0]
                             + ", Within Bound: "
-                            + result.getSPRTActivationResult()[i][j][1] * 36);
+                            + result.getSPRTActivationResult()[i][j][1]);
                 }
             }
 
