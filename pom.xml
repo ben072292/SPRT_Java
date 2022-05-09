@@ -29,7 +29,7 @@
       <configuration>
         <archive>
           <manifest>
-            <mainClass>SparkDriver</mainClass>
+            <mainClass>edu.cwru.csds.sprt.RealExperiment</mainClass>
           </manifest>
         </archive>
         <descriptorRefs>
@@ -51,7 +51,7 @@
 	<dependency>
     	<groupId>org.apache.spark</groupId>
     	<artifactId>spark-core_2.13</artifactId>
-    	<version>3.2.1</version>
+    	<version>3.4.1</version>
       <scope>provided</scope>
 	</dependency>
   </dependencies>

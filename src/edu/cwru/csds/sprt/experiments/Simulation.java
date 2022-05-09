@@ -9,10 +9,15 @@ import java.io.PrintStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Iterator;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.broadcast.Broadcast;
 
@@ -133,6 +138,7 @@ public class Simulation implements Serializable {
             }
 
             Broadcast<ArrayList<Brain>> broadcastVolumes = sc.broadcast(volumes);
+            Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(volumes.size());
 
             distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>() {
 
@@ -157,72 +163,77 @@ public class Simulation implements Serializable {
 
             });
 
-            Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(volumes.size());
-
-            JavaRDD<ArrayList<CollectedDataset>> collectedDatasets = distributedDataset
-                    .map(new Function<DistributedDataset, ArrayList<CollectedDataset>>() {
-                        public ArrayList<CollectedDataset> call(DistributedDataset distributedDataset) {
+            ActivationResult result = distributedDataset
+                    .mapPartitions(new FlatMapFunction<Iterator<DistributedDataset>, ActivationResult>() {
+                        public Iterator<ActivationResult> call(Iterator<DistributedDataset> distributedDataset)
+                                throws Exception {
                             MKL_Set_Num_Threads(1);
-                            ArrayList<CollectedDataset> ret = new ArrayList<>();
+                            ArrayList<DistributedDataset> distributedData = new ArrayList<>();
+                            distributedDataset.forEachRemaining(distributedData::add);
 
-                            ret.clear();
-                            for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber.value()
-                                    + broadcastRealBatchSize.value(); i++) {
-                                double[] boldResponseRaw = new double[i];
-                                System.arraycopy(distributedDataset.getBoldResponse(), 0, boldResponseRaw, 0, i);
-                                Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
-                                CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
-                                Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i - 1),
-                                        boldResponse);
-                                double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1), beta);
-                                Matrix D = generateD(R, broadcastHList.value().get(i - 1));
-                                for (int j = 0; j < broadcastC.value().getRow(); j++) {
+                            ArrayList<ActivationResult> SPRTActivation = new ArrayList<>();
 
-                                    Matrix c = broadcastC.value().getRowSlice(j);
-                                    double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
-                                            broadcastXTXInverseXTList.value().get(i - 1),
-                                            broadcastXXTXInverseList.value().get(i - 1), D);
-                                    double cBeta = computeCBeta(c, beta);
-                                    double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, 0.0,
-                                            variance);
-                                    int SPRTActivationStatus = computeActivationStatus(SPRT,
-                                            broadcastConfig.value().SPRTUpperBound,
-                                            broadcastConfig.value().SPRTLowerBound);
-                                    temp.setVariance(j, variance);
-                                    temp.setCBeta(j, cBeta);
-                                    temp.setTheta1(j, 0.0);
-                                    temp.setSPRT(j, SPRT);
-                                    temp.setSPRTActivationStatus(j, SPRTActivationStatus);
-                                }
-                                ret.add(temp);
-                            }
+                            ForkJoinPool myPool = new ForkJoinPool(8);
+                            try {
+                                myPool.submit(() -> distributedData.parallelStream().forEach(d -> {
+                                    ArrayList<CollectedDataset> ret = new ArrayList<>();
+                                    for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber.value()
+                                            + broadcastRealBatchSize.value(); i++) {
+                                        double[] boldResponseRaw = new double[i];
+                                        System.arraycopy(d.getBoldResponse(), 0, boldResponseRaw, 0,
+                                                i);
+                                        Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length, 1);
+                                        CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
+                                        Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i - 1),
+                                                boldResponse);
+                                        double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1), beta);
+                                        Matrix D = generateD(R, broadcastHList.value().get(i - 1));
+                                        for (int j = 0; j < broadcastC.value().getRow(); j++) {
 
-                            return ret;
-                        }
-                    });
-
-            // 3. Get statistics from collected dataset
-
-            ActivationResult result = collectedDatasets
-                    .map(new Function<ArrayList<CollectedDataset>, ActivationResult>() {
-                        public ActivationResult call(ArrayList<CollectedDataset> collectedDatasets) {
-                            int[][][] SPRTActivationCounter = new int[collectedDatasets.size()][broadcastC.value()
-                                    .getRow()][3];
-
-                            for (int i = 0; i < collectedDatasets.size(); i++) {
-                                for (int j = 0; j < broadcastC.value().getRow(); j++) {
-                                    if (collectedDatasets.get(i).getSPRTActivationStatus(j) == -1) {
-                                        SPRTActivationCounter[i][j][0]++;
-                                    } else if (collectedDatasets.get(i).getSPRTActivationStatus(j) == 0) {
-                                        SPRTActivationCounter[i][j][1]++;
-                                    } else {
-                                        SPRTActivationCounter[i][j][2]++;
+                                            Matrix c = broadcastC.value().getRowSlice(j);
+                                            double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
+                                                    broadcastXTXInverseXTList.value().get(i - 1),
+                                                    broadcastXXTXInverseList.value().get(i - 1), D);
+                                            double cBeta = computeCBeta(c, beta);
+                                            double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, 0.0,
+                                                    variance);
+                                            int SPRTActivationStatus = computeActivationStatus(SPRT,
+                                                    broadcastConfig.value().SPRTUpperBound,
+                                                    broadcastConfig.value().SPRTLowerBound);
+                                            temp.setVariance(j, variance);
+                                            temp.setCBeta(j, cBeta);
+                                            temp.setTheta1(j, 0.0);
+                                            temp.setSPRT(j, SPRT);
+                                            temp.setSPRTActivationStatus(j, SPRTActivationStatus);
+                                        }
+                                        ret.add(temp);
                                     }
 
-                                }
+                                    int[][][] SPRTActivationCounter = new int[ret.size()][broadcastC.value()
+                                            .getRow()][3];
+
+                                    for (int i = 0; i < ret.size(); i++) {
+                                        for (int j = 0; j < broadcastC.value().getRow(); j++) {
+                                            if (ret.get(i).getSPRTActivationStatus(j) == -1) {
+                                                SPRTActivationCounter[i][j][0]++;
+                                            } else if (ret.get(i).getSPRTActivationStatus(j) == 0) {
+                                                SPRTActivationCounter[i][j][1]++;
+                                            } else {
+                                                SPRTActivationCounter[i][j][2]++;
+                                            }
+
+                                        }
+                                    }
+                                    SPRTActivation.add(new ActivationResult(SPRTActivationCounter));
+
+                                })).get();
+                            } catch (InterruptedException | ExecutionException e) {
+                                throw new RuntimeException(e);
+                            } finally {
+                                myPool.shutdown();
                             }
 
-                            return new ActivationResult(SPRTActivationCounter);
+                            return SPRTActivation.iterator();
                         }
                     }).reduce((a, b) -> {
                         return a.merge(b);
