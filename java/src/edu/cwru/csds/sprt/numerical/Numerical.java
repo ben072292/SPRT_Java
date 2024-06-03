@@ -225,10 +225,19 @@ public class Numerical {
 	public static Matrix generateD(double[] R, double[] H) {
 		double[] D = new double[R.length * R.length];
 		for (int i = 0; i < R.length; i++) {
-
-			D[i * R.length + i] = Math.pow(R[i], 2) / (1 - H[i]);
+			for (int j = 0; j < R.length; j++) {
+				D[i * R.length + j] = Math.pow(R[i], 2) / (1 - H[i]);
+			}
 		}
 		return new Matrix(D, R.length, R.length);
+	}
+
+	public static double[] generateD_array(double[] R, double[] H) {
+		double[] D = new double[R.length];
+		for (int i = 0; i < R.length; i++) {
+			D[i] = Math.pow(R[i], 2) / (1 - H[i]);
+		}
+		return D;
 	}
 
 	/*

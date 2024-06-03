@@ -7,21 +7,13 @@
   <description>This is a Java version of SPRT developed by Weicong Chen</description>
   <build>
     <sourceDirectory>src</sourceDirectory>
-    <resources>
-      <resource>
-        <directory>src</directory>
-        <excludes>
-          <exclude>**/*.java</exclude>
-        </excludes>
-      </resource>
-    </resources>
     <plugins>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.1</version>
         <configuration>
-          <source>11</source>
-          <target>11</target>
+          <source>21</source>
+          <target>21</target>
         </configuration>
       </plugin>
       <plugin>
@@ -44,14 +36,14 @@
     <dependency>
       <groupId>org.bytedeco</groupId>
       <artifactId>mkl-platform</artifactId>
-      <version>2020.1-1.5.3</version>
+      <version>2023.1-1.5.9</version>
     </dependency>
 
   	<!-- https://mvnrepository.com/artifact/org.apache.spark/spark-core -->
 	<dependency>
     	<groupId>org.apache.spark</groupId>
     	<artifactId>spark-core_2.13</artifactId>
-    	<version>3.4.1</version>
+    	<version>3.5.0</version>
       <scope>provided</scope>
 	</dependency>
   </dependencies>

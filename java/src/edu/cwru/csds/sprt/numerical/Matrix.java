@@ -27,21 +27,18 @@ public class Matrix implements Serializable {
 	private int col;
 
 	public Matrix(int row, int col) {
-		MKL_Set_Num_Threads(1);
 		this.row = row;
 		this.col = col;
 		this.array = new double[row * col];
 	}
 
 	public Matrix(double[] array, int row, int col) {
-		MKL_Set_Num_Threads(1);
 		this.row = row;
 		this.col = col;
 		this.array = array;
 	}
 
 	public Matrix(int[] array, int row, int col) {
-		MKL_Set_Num_Threads(1);
 		this.row = row;
 		this.col = col;
 		double[] arr = new double[row * col];
@@ -52,7 +49,6 @@ public class Matrix implements Serializable {
 	}
 
 	public Matrix(Matrix matrix) {
-		MKL_Set_Num_Threads(1);
 		this.row = matrix.row;
 		this.col = matrix.col;
 		this.array = matrix.array.clone();
@@ -105,8 +101,9 @@ public class Matrix implements Serializable {
 	public Matrix diagnalMultiplyDense(Matrix matrix) {
 		double[] res = new double[this.row * matrix.col];
 		for (int i = 0; i < this.row; i++) {
+			double val = this.get(i, i);
 			for (int j = 0; j < matrix.col; j++) {
-				res[i * matrix.col + j] = matrix.get(i, j) * this.get(i, i);
+				res[i * matrix.col + j] = matrix.get(i, j) * val;
 			}
 		}
 		return new Matrix(res, this.row, matrix.col);
@@ -138,7 +135,7 @@ public class Matrix implements Serializable {
 		return new Matrix(res, this.row, matrix.col);
 	}
 
-	public static class CSR {
+	public class CSR {
 		DoublePointer values;
 		IntPointer rowsStart;
 		IntPointer rowsEnd;
@@ -169,17 +166,17 @@ public class Matrix implements Serializable {
 				this.values.put(i, values[i]);
 			}
 
-			this.rowsStart = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 64));
+			this.rowsStart = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 32));
 			for (int i = 0; i < matrix.row; i++) {
 				this.rowsStart.put(i, rowsIndex[i]);
 			}
 
-			this.rowsEnd = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 64));
+			this.rowsEnd = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 32));
 			for (int i = 0; i < matrix.row; i++) {
 				this.rowsEnd.put(i, rowsIndex[i + 1]);
 			}
 
-			this.colIndex = new IntPointer(MKL_malloc((ciIndex) * Integer.BYTES, 64));
+			this.colIndex = new IntPointer(MKL_malloc((ciIndex) * Integer.BYTES, 32));
 			for (int i = 0; i < ciIndex; i++) {
 				this.colIndex.put(i, colIndex[i]);
 			}
@@ -192,6 +189,45 @@ public class Matrix implements Serializable {
 			MKL_free(this.colIndex);
 		}
 	}
+
+	// public class CSR {
+	// 	double[] values;
+	// 	int[] rowsStart;
+	// 	int[] rowsEnd;
+	// 	int[] colIndex;
+
+	// 	public CSR(Matrix matrix) {
+	// 		values = new double[matrix.row * matrix.col];
+	// 		int[] rowsIndex = new int[matrix.row + 1];
+	// 		colIndex = new int[matrix.row * matrix.col];
+	// 		int valsIndex = 0;
+	// 		int rsIndex = 1;
+	// 		int ciIndex = 0;
+	// 		rowsIndex[0] = 0;
+	// 		int rowCounter = 0;
+	// 		for (int i = 0; i < matrix.row; i++) {
+	// 			for (int j = 0; j < matrix.col; j++) {
+	// 				if (matrix.get(i, j) != 0.0) {
+	// 					values[valsIndex++] = matrix.get(i, j);
+	// 					colIndex[ciIndex++] = j;
+	// 					rowCounter++;
+	// 				}
+	// 			}
+	// 			rowsIndex[rsIndex++] = rowCounter;
+	// 		}
+
+	// 		this.rowsStart = new int[matrix.row];
+	// 		for (int i = 0; i < matrix.row; i++) {
+	// 			this.rowsStart[i] = rowsIndex[i];
+	// 		}
+
+	// 		this.rowsEnd = new int[matrix.row];
+	// 		for (int i = 0; i < matrix.row; i++) {
+	// 			this.rowsEnd[i] = rowsIndex[i+1];
+	// 		}
+
+	// 	}
+	// }
 	// TO DO: Sparse-Sparse Matrix Multiplication
 
 	public Matrix inverse() throws MatrixComputationErrorException {
@@ -326,7 +362,7 @@ public class Matrix implements Serializable {
 	public static void main(String[] args) throws Exception {
 
 		Random rand = new Random();
-		int a = 10000;
+		int a = 3000;
 		int b = 1;
 
 		double[] cc = new double[a * a];
@@ -349,11 +385,10 @@ public class Matrix implements Serializable {
 		for (int i = 0; i < b; i++) {
 			// c.inverse().multiply(c);
 			c.multiply(bb).showMatrix();
-			;
 		}
 		long endTime = System.nanoTime();
 		long timeElapsed = endTime - startTime;
-		System.out.println("1: Execution time in milliseconds: " + timeElapsed / 1e6);
+		System.out.println("1: Execution time in us: " + timeElapsed / 1e6);
 
 		startTime = System.nanoTime();
 		for (int i = 0; i < b; i++) {
@@ -363,7 +398,17 @@ public class Matrix implements Serializable {
 		}
 		endTime = System.nanoTime();
 		timeElapsed = endTime - startTime;
-		System.out.println("2: Execution time in milliseconds: " + timeElapsed / 1e6);
+		System.out.println("2: Execution time in us: " + timeElapsed / 1e6);
+
+		startTime = System.nanoTime();
+		for (int i = 0; i < b; i++) {
+			c.diagnalMultiplyDense(bb)
+					.showMatrix();
+			;
+		}
+		endTime = System.nanoTime();
+		timeElapsed = endTime - startTime;
+		System.out.println("3: Execution time in us: " + timeElapsed / 1e6);
 
 		// System.out.println(Numerical.computeVarianceUsingMKLSparseRoutine1(c, c, c));
 

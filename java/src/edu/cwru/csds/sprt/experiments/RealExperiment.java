@@ -37,8 +37,9 @@ import edu.cwru.csds.sprt.utilities.VolumeReader;
 public class RealExperiment implements Serializable {
 
 	public static void main(String[] args) {
+		MKL_Set_Num_Threads(1);
 		int batchSize = Integer.parseInt(args[0]);
-		long start, end;
+		long start, end, scanStart, scanEnd;
 		PrintStream out;
 		try {
 			out = new PrintStream(new FileOutputStream("real-world.txt"));
@@ -127,7 +128,8 @@ public class RealExperiment implements Serializable {
 
 		start = System.nanoTime();
 
-		while (scanNumber <= 99) {
+		while (scanNumber < config.ROW) {
+			scanStart = System.nanoTime();
 			int currentScanNumber = scanNumber;
 
 			Broadcast<Integer> broadcastStartScanNumber = sc.broadcast(scanNumber);
@@ -168,7 +170,6 @@ public class RealExperiment implements Serializable {
 			JavaRDD<ArrayList<CollectedDataset>> collectedDatasets = distributedDataset
 					.map(new Function<DistributedDataset, ArrayList<CollectedDataset>>() {
 						public ArrayList<CollectedDataset> call(DistributedDataset distributedDataset) {
-							MKL_Set_Num_Threads(1);
 							ArrayList<CollectedDataset> ret = new ArrayList<>();
 
 							ret.clear();
@@ -182,12 +183,15 @@ public class RealExperiment implements Serializable {
 										boldResponse);
 								double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1), beta);
 								Matrix D = generateD(R, broadcastHList.value().get(i - 1));
+								// double[] D = generateD_array(R, broadcastHList.value().get(i - 1));
 								for (int j = 0; j < broadcastC.value().getRow(); j++) {
 
 									Matrix c = broadcastC.value().getRowSlice(j);
 									double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
 											broadcastXTXInverseXTList.value().get(i - 1),
 											broadcastXXTXInverseList.value().get(i - 1), D);
+									// double variance = Numerical.computeVariance(c, broadcastXList.getValue().get(i-1), D);
+									// double variance = 1.0;
 									double cBeta = computeCBeta(c, beta);
 									double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, 0.0,
 											variance);
@@ -249,8 +253,10 @@ public class RealExperiment implements Serializable {
 			}
 
 			scanNumber = currentScanNumber;
-
+			scanEnd = System.nanoTime();
+			System.out.print((scanEnd - scanStart) / 1e9 + ", ");
 		}
+		System.out.println();
 
 		sc.close();
 		end = System.nanoTime();

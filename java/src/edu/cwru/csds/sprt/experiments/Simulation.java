@@ -41,6 +41,7 @@ import edu.cwru.csds.sprt.utilities.Config;
 public class Simulation implements Serializable {
 
     public static void main(String[] args) {
+        MKL_Set_Num_Threads(1);
         int batchSize = Integer.parseInt(args[0]);
         int dataExpand = Integer.parseInt(args[1]);
         long start, end;
@@ -167,7 +168,6 @@ public class Simulation implements Serializable {
                     .mapPartitions(new FlatMapFunction<Iterator<DistributedDataset>, ActivationResult>() {
                         public Iterator<ActivationResult> call(Iterator<DistributedDataset> distributedDataset)
                                 throws Exception {
-                            MKL_Set_Num_Threads(1);
                             ArrayList<DistributedDataset> distributedData = new ArrayList<>();
                             distributedDataset.forEachRemaining(distributedData::add);
 
@@ -230,7 +230,7 @@ public class Simulation implements Serializable {
                             } catch (InterruptedException | ExecutionException e) {
                                 throw new RuntimeException(e);
                             } finally {
-                                myPool.shutdown();
+                                myPool.close();
                             }
 
                             return SPRTActivation.iterator();
