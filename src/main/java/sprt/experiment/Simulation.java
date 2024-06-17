@@ -1,7 +1,6 @@
 package sprt.experiment;
 
 import static org.bytedeco.mkl.global.mkl_rt.*;
-import static sprt.Numerical.*;
 
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -14,23 +13,24 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
-import org.apache.spark.api.java.function.Function;
 import org.apache.spark.broadcast.Broadcast;
 
-import sprt.CollectedDataset;
-import sprt.Config;
+import sprt.ReduceData;
 import sprt.Contrasts;
 import sprt.Dataset;
 import sprt.DesignMatrix;
-import sprt.DistributedDataset;
 import sprt.Image;
 import sprt.Matrix;
-import sprt.Numerical;
+import sprt.Matrix.MatrixStorageScope;
 import sprt.SprtStat;
+
+import sprt.Config;
+import static sprt.Algorithm.*;
 
 /**
  * The Driver class using Apache Spark
@@ -64,10 +64,10 @@ public class Simulation implements Serializable {
         // load configuration and predefined data
         System.out.println("load configuration and predefined data");
         Config config = new Config();
-        DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.ROW, config.COL);
+        DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", config.MAX_SCAN, config.COL);
         Contrasts contrasts = new Contrasts("test/contrasts.txt");
         config.setContrasts(contrasts);
-        Matrix C = contrasts.toMatrix();
+        Matrix C = contrasts.toMatrix(MatrixStorageScope.HEAP);
         Broadcast<Matrix> broadcastC = sc.broadcast(C);
         Matrix X;
         System.out.println("Complete");
@@ -75,10 +75,10 @@ public class Simulation implements Serializable {
         // Read in first scan to get some brain volume metadata
         System.out.println("Read in first scan to get some brain volume metadata");
         int scanNumber;
-        Image volume = new Image(dataExpand * 36, 100, 100, true);
-        config.setVolumeSize(volume);
-        Dataset dataset = new Dataset(config.getX(), config.getY(), config.getZ());
-        dataset.add(volume);
+        Image image = new Image(dataExpand * 36, 100, 100, true);
+        config.setImageSpec(image);
+        Dataset BOLD_dataset = new Dataset(config.getX(), config.getY(), config.getZ());
+        BOLD_dataset.add(image);
         System.out.println("Complete");
 
         // setup broadcast variables
@@ -89,7 +89,7 @@ public class Simulation implements Serializable {
         ArrayList<Matrix> XTXInverseXTList = new ArrayList<>();
         ArrayList<Matrix> XXTXInverseList = new ArrayList<>();
         ArrayList<double[]> HList = new ArrayList<>();
-        for (int i = 1; i <= config.ROW; i++) {
+        for (int i = 1; i <= config.MAX_SCAN; i++) {
             if (i <= config.K) {
                 XList.add(null);
                 XTXInverseList.add(null);
@@ -97,10 +97,10 @@ public class Simulation implements Serializable {
                 XXTXInverseList.add(null);
                 HList.add(null);
             } else {
-                X = designMatrix.toMatrix(i);
+                X = designMatrix.toMatrix(i, MatrixStorageScope.HEAP);
                 Matrix XTXInverse = computeXTXInverse(X);
-                Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-                Matrix XXTXInverse = X.multiply(XTXInverse);
+                Matrix XTXInverseXT = XTXInverse.mmult(X);
+                Matrix XXTXInverse = X.mmul(XTXInverse);
                 double[] H = computeH(XXTXInverse, X);
                 XList.add(X);
                 XTXInverseList.add(XTXInverse);
@@ -118,7 +118,7 @@ public class Simulation implements Serializable {
 
         // Continue reading till reaching the K-th scan
         for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
-            dataset.add(volume);
+            BOLD_dataset.add(image);
         }
         // System.out.println(dataset.getVolume(config.K));
 
@@ -126,8 +126,8 @@ public class Simulation implements Serializable {
         System.out.println(
                 new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
 
-        JavaRDD<DistributedDataset> distributedDataset = sc
-                .parallelize(dataset.toDistrbutedDataset(config.enableROI, config.getROI()));
+        JavaRDD<double[]> BOLD_RDD = sc
+                .parallelize(BOLD_dataset.toDD(config.enableROI, config.getROI()));
 
         start = System.nanoTime();
 
@@ -136,103 +136,98 @@ public class Simulation implements Serializable {
 
             Broadcast<Integer> broadcastStartScanNumber = sc.broadcast(scanNumber);
 
-            ArrayList<Image> volumes = new ArrayList<>();
-            for (; currentScanNumber < scanNumber + batchSize && currentScanNumber <= config.ROW; currentScanNumber++) {
-                volumes.add(volume);
+            ArrayList<Image> incImages = new ArrayList<>();
+            for (; currentScanNumber < scanNumber + batchSize
+                    && currentScanNumber <= config.MAX_SCAN; currentScanNumber++) {
+                incImages.add(image);
             }
 
-            Broadcast<ArrayList<Image>> broadcastVolumes = sc.broadcast(volumes);
-            Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(volumes.size());
+            Broadcast<Integer> broadcastRealBatchSize = sc.broadcast(incImages.size());
 
-            distributedDataset = distributedDataset.map(new Function<DistributedDataset, DistributedDataset>() {
-                public DistributedDataset call(DistributedDataset distributedDataset) {
-                    int a = distributedDataset.getBoldResponse().length;
-                    int b = broadcastVolumes.value().size();
-                    int x = distributedDataset.getX();
-                    int y = distributedDataset.getY();
-                    int z = distributedDataset.getZ();
+            Dataset incDataset = new Dataset(incImages);
 
-                    double[] newBoldResponse = new double[a + b];
-                    for (int i = 0; i < a; i++) {
-                        newBoldResponse[i] = distributedDataset.getBoldResponse()[i];
-                    }
-                    for (int i = 0; i < b; i++) {
-                        newBoldResponse[a + i] = broadcastVolumes.value().get(i).getVoxel(x, y, z);
-                    }
-                    return new DistributedDataset(newBoldResponse, x, y, z);
-                }
+            JavaRDD<double[]> inc_RDD = sc.parallelize(incDataset.toDD(config.enableROI, config.getROI()));
+
+            // Zip the RDDs
+            JavaPairRDD<double[], double[]> zippedRDD = BOLD_RDD.zip(inc_RDD);
+
+            // Merge each pair of ArrayLists
+            BOLD_RDD = zippedRDD.map(tuple -> {
+                double[] array1 = tuple._1;
+                double[] array2 = tuple._2;
+                double[] mergedArray = new double[array1.length + array2.length];
+                System.arraycopy(array1, 0, mergedArray, 0, array1.length);
+                System.arraycopy(array2, 0, mergedArray, array1.length, array2.length);
+                return mergedArray;
             });
 
-            SprtStat result = distributedDataset
-                    .mapPartitions(new FlatMapFunction<Iterator<DistributedDataset>, SprtStat>() {
-                        public Iterator<SprtStat> call(Iterator<DistributedDataset> distributedDataset)
+            SprtStat sprtStat = BOLD_RDD
+                    .mapPartitions(new FlatMapFunction<Iterator<double[]>, SprtStat>() {
+                        public Iterator<SprtStat> call(Iterator<double[]> dd)
                                 throws Exception {
-                            ArrayList<DistributedDataset> distributedData = new ArrayList<>();
-                            distributedDataset.forEachRemaining(distributedData::add);
+                            ArrayList<double[]> distributedData = new ArrayList<>();
+                            dd.forEachRemaining(distributedData::add);
 
                             ArrayList<SprtStat> SPRTActivation = new ArrayList<>();
-                            try (ForkJoinPool myPool = new ForkJoinPool(broadcastNumThreads.value())) {
-                                try {
-                                    myPool.submit(() -> distributedData.parallelStream().forEach(d -> {
-                                        ArrayList<CollectedDataset> ret = new ArrayList<>();
-                                        for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber
-                                                .value()
-                                                + broadcastRealBatchSize.value(); i++) {
-                                            double[] boldResponseRaw = new double[i];
-                                            System.arraycopy(d.getBoldResponse(), 0, boldResponseRaw, 0,
-                                                    i);
-                                            Matrix boldResponse = new Matrix(boldResponseRaw, boldResponseRaw.length,
-                                                    1);
-                                            CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
-                                            Matrix beta = computeBeta2(broadcastXTXInverseXTList.value().get(i - 1),
-                                                    boldResponse);
-                                            double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1),
-                                                    beta);
-                                            Matrix D = generateD(R, broadcastHList.value().get(i - 1));
-                                            for (int j = 0; j < broadcastC.value().getRow(); j++) {
+                            ForkJoinPool myPool = new ForkJoinPool(broadcastNumThreads.value());
+                            try {
+                                myPool.submit(() -> distributedData.parallelStream().forEach(d -> {
+                                    ArrayList<ReduceData> ret = new ArrayList<>();
+                                    for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber
+                                            .value()
+                                            + broadcastRealBatchSize.value(); i++) {
+                                        Matrix boldResponse = new Matrix(d, d.length,
+                                                1, MatrixStorageScope.NATIVE);
+                                        ReduceData temp = new ReduceData(broadcastConfig.value());
+                                        Matrix beta = computeBetaHat(broadcastXTXInverseXTList.value().get(i - 1),
+                                                boldResponse);
+                                        double[] R = computeR(boldResponse, broadcastXList.value().get(i - 1),
+                                                beta);
+                                        Matrix D = generateD(R, broadcastHList.value().get(i - 1),
+                                                MatrixStorageScope.NATIVE);
+                                        for (int j = 0; j < broadcastC.value().getRow(); j++) {
 
-                                                Matrix c = broadcastC.value().getRowSlice(j);
-                                                double variance = Numerical.computeVarianceUsingMKLSparseRoutine3(c,
-                                                        broadcastXTXInverseXTList.value().get(i - 1),
-                                                        broadcastXXTXInverseList.value().get(i - 1), D);
-                                                double cBeta = computeCBeta(c, beta);
-                                                double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, 0.0,
-                                                        variance);
-                                                int SPRTActivationStatus = computeActivationStatus(SPRT,
-                                                        broadcastConfig.value().SPRTUpperBound,
-                                                        broadcastConfig.value().SPRTLowerBound);
-                                                temp.setVariance(j, variance);
-                                                temp.setCBeta(j, cBeta);
-                                                temp.setTheta1(j, 0.0);
-                                                temp.setSPRT(j, SPRT);
-                                                temp.setSPRTActivationStatus(j, SPRTActivationStatus);
-                                            }
-                                            ret.add(temp);
+                                            Matrix c = broadcastC.value().getRowSlice(j);
+                                            double variance = compute_variance_sparse_fastest(c,
+                                                    broadcastXTXInverseXTList.value().get(i - 1),
+                                                    broadcastXXTXInverseList.value().get(i - 1), D);
+                                            double cBeta = compute_cBetaHat(c, beta);
+                                            double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, 0.0,
+                                                    variance);
+                                            int SPRTActivationStatus = compute_activation_stat(SPRT,
+                                                    broadcastConfig.value().SPRTUpperBound,
+                                                    broadcastConfig.value().SPRTLowerBound);
+                                            temp.setVariance(j, variance);
+                                            temp.setCBeta(j, cBeta);
+                                            temp.setTheta1(j, 0.0);
+                                            temp.setSPRT(j, SPRT);
+                                            temp.setSPRTActivationStatus(j, SPRTActivationStatus);
                                         }
+                                        ret.add(temp);
+                                    }
 
-                                        int[][][] SPRTActivationCounter = new int[ret.size()][broadcastC.value()
-                                                .getRow()][3];
+                                    int[][][] SPRTActivationCounter = new int[ret.size()][broadcastC.value()
+                                            .getRow()][3];
 
-                                        for (int i = 0; i < ret.size(); i++) {
-                                            for (int j = 0; j < broadcastC.value().getRow(); j++) {
-                                                if (ret.get(i).getSPRTActivationStatus(j) == -1) {
-                                                    SPRTActivationCounter[i][j][0]++;
-                                                } else if (ret.get(i).getSPRTActivationStatus(j) == 0) {
-                                                    SPRTActivationCounter[i][j][1]++;
-                                                } else {
-                                                    SPRTActivationCounter[i][j][2]++;
-                                                }
-
+                                    for (int i = 0; i < ret.size(); i++) {
+                                        for (int j = 0; j < broadcastC.value().getRow(); j++) {
+                                            if (ret.get(i).getSPRTActivationStatus(j) == -1) {
+                                                SPRTActivationCounter[i][j][0]++;
+                                            } else if (ret.get(i).getSPRTActivationStatus(j) == 0) {
+                                                SPRTActivationCounter[i][j][1]++;
+                                            } else {
+                                                SPRTActivationCounter[i][j][2]++;
                                             }
-                                        }
-                                        SPRTActivation.add(new SprtStat(SPRTActivationCounter));
 
-                                    })).get();
-                                } catch (InterruptedException | ExecutionException e) {
-                                    throw new RuntimeException(e);
-                                } finally {
-                                    myPool.shutdown();
-                                }
+                                        }
+                                    }
+                                    SPRTActivation.add(new SprtStat(SPRTActivationCounter));
+
+                                })).get();
+                            } catch (InterruptedException | ExecutionException e) {
+                                throw new RuntimeException(e);
+                            } finally {
+                                myPool.shutdown();
                             }
 
                             return SPRTActivation.iterator();
@@ -241,17 +236,17 @@ public class Simulation implements Serializable {
                         return a.merge(b);
                     });
 
-            for (int i = 0; i < result.getSprtStat().length; i++) {
+            for (int i = 0; i < sprtStat.getSprtStat().length; i++) {
                 System.out.println("Scan " + (i + scanNumber));
-                for (int j = 0; j < result.getSprtStat()[0].length; j++) {
+                for (int j = 0; j < sprtStat.getSprtStat()[0].length; j++) {
                     System.out.println("Contrast "
                             + (j + 1)
                             + ": Cross Upper: "
-                            + result.getSprtStat()[i][j][2]
+                            + sprtStat.getSprtStat()[i][j][2]
                             + ", Cross Lower: "
-                            + result.getSprtStat()[i][j][0]
+                            + sprtStat.getSprtStat()[i][j][0]
                             + ", Within Bound: "
-                            + result.getSprtStat()[i][j][1]);
+                            + sprtStat.getSprtStat()[i][j][1]);
                 }
             }
 

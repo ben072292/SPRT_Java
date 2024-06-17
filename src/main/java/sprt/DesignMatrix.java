@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.util.Arrays;
 
+import sprt.Matrix.MatrixStorageScope;
 import sprt.exception.FileFormatNotCorrectException;
 
 /**
@@ -53,14 +54,14 @@ public class DesignMatrix {
 		}
 	}
 
-	public Matrix toMatrix(int rowToSlice) {
+	public Matrix toMatrix(int rowToSlice, MatrixStorageScope datatype) {
 		double[] arr = new double[rowToSlice * this.col];
 		for (int i = 0; i < rowToSlice; i++) {
 			for (int j = 0; j < this.col; j++) {
 				arr[i * this.col + j] = this.designMatrix[i][j];
 			}
 		}
-		return new Matrix(arr, rowToSlice, this.col);
+		return new Matrix(arr, rowToSlice, this.col, datatype);
 	}
 
 	// main

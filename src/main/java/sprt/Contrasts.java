@@ -8,6 +8,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Scanner;
+import sprt.Matrix.MatrixStorageScope;
 
 /**
  * Processes the contrast files used for SPRT
@@ -90,14 +91,14 @@ public class Contrasts implements Serializable {
 		}
 	}
 
-	public Matrix toMatrix() {
+	public Matrix toMatrix(MatrixStorageScope datatype) {
 		double[] arr = new double[this.numContrasts * this.contrastLength];
 		for (int i = 0; i < this.numContrasts; i++) {
 			for (int j = 0; j < this.contrastLength; j++) {
 				arr[i * this.contrastLength + j] = this.contrasts[i][j];
 			}
 		}
-		return new Matrix(arr, this.numContrasts, this.contrastLength);
+		return new Matrix(arr, this.numContrasts, this.contrastLength, datatype);
 	}
 
 	public static void main(String[] args) {

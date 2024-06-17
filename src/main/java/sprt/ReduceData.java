@@ -2,7 +2,7 @@ package sprt;
 
 import java.io.Serializable;
 
-public class CollectedDataset implements Serializable {
+public class ReduceData implements Serializable {
 	private double[] variance;
 	private double[] cBeta;
 	private double[] ZScore;
@@ -11,7 +11,7 @@ public class CollectedDataset implements Serializable {
 	private int[] SPRTActivationStatus;
 	private int[][] forecastedActivationStatus;
 
-	public CollectedDataset(Config config) {
+	public ReduceData(Config config) {
 		this.variance = new double[config.contrasts.numContrasts];
 		this.cBeta = new double[config.contrasts.numContrasts];
 		this.ZScore = new double[config.contrasts.numContrasts];
