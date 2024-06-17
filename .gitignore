@@ -1,6 +1,7 @@
 bin/
-Dataset/
+dat/
 target/
 test/
 .vscode/settings.json
 .DS_Store
+*.txt

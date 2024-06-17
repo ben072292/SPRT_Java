@@ -3,7 +3,7 @@ package sprt;
 import java.io.Serializable;
 import java.util.BitSet;
 
-import sprt.exception.VolumeNotMatchException;
+import sprt.exception.ImageException;
 
 /**
  * Handles all configurable parameters.
@@ -12,9 +12,9 @@ import sprt.exception.VolumeNotMatchException;
  *
  */
 public class Config implements Serializable {
-	public int ROW = 238; // total scans in the session
+	public int MAX_SCAN = 238; // total scans in the session
 	public int COL = 8; // # of columns in design matrix / contrasts
-	public int K = 78; // first K blocks used to collect data to estimate theta 1
+	public int K = 78; // first K scans used to collect data to estimate theta 1
 	public double ZScore = 3.12; // Z values used for estimating theta 1
 	public double theta0 = 0;
 	public double theta1 = 1;
@@ -22,9 +22,9 @@ public class Config implements Serializable {
 	public double beta = 0.1; // used to decide SPRT boundary
 	public double percentLower = 0.85; // percentage of SPRT to count as active
 	public double percentUpper = 0.85; // percentage of SPRT to count as non-active
-	public double SPRTUpperBound = Numerical.SPRTUpperBound(alpha, beta);
-	public double SPRTLowerBound = Numerical.SPRTLowerBound(alpha, beta);
-	public String BOLDPath = "Latest_data/";
+	public double SPRTUpperBound = Algorithm.SPRTUpperBound(alpha, beta);
+	public double SPRTLowerBound = Algorithm.SPRTLowerBound(alpha, beta);
+	public String BOLDPath = "dat/";
 	public String BOLDPrefix = "bold";
 	public Contrasts contrasts;
 	public boolean enableROI = true;
@@ -41,17 +41,17 @@ public class Config implements Serializable {
 		return BOLDPath + BOLDPrefix + (scanNumber - 1) + ".txt";
 	}
 
-	public void setVolumeSize(Image volume) {
+	public void setImageSpec(Image image) {
 		try {
 			if (this.x == 0 && this.y == 0 && this.z == 0) {
-				this.x = volume.getX();
-				this.y = volume.getY();
-				this.z = volume.getZ();
+				this.x = image.getX();
+				this.y = image.getY();
+				this.z = image.getZ();
 
 				// set ROI here since only first scan will enter this if statement
-				this.ROI = setROI(volume);
+				this.ROI = setROI(image);
 			} else {
-				throw new VolumeNotMatchException("Brain volume size has been set and cannot be modified!");
+				throw new ImageException("Image size has been set and cannot be modified!");
 			}
 
 		} catch (Exception e) {
@@ -59,7 +59,7 @@ public class Config implements Serializable {
 		}
 	}
 
-	public void expandeVolumeSize(int x) {
+	public void expandeImageSize(int x) {
 		this.x *= x;
 	}
 
@@ -67,10 +67,10 @@ public class Config implements Serializable {
 		this.contrasts = contrasts;
 	}
 
-	public BitSet setROI(Image volume) {
-		BitSet ROI = new BitSet(volume.getX() * volume.getY() * volume.getZ());
-		for (int i = 0; i < volume.getX() * volume.getY() * volume.getZ(); i++) {
-			if (volume.getVoxel(i) != 0) {
+	public BitSet setROI(Image image) {
+		BitSet ROI = new BitSet(image.getX() * image.getY() * image.getZ());
+		for (int i = 0; i < image.getX() * image.getY() * image.getZ(); i++) {
+			if (image.getVoxel(i) != 0) {
 				ROI.set(i);
 			}
 		}

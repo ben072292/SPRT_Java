@@ -1,5 +1,6 @@
 package sprt;
 
+import sprt.Matrix.MatrixStorageScope;
 import sprt.exception.MatrixComputationErrorException;
 
 /**
@@ -8,23 +9,13 @@ import sprt.exception.MatrixComputationErrorException;
  * @author Ben
  *
  */
-public class Numerical {
-	public static Matrix computeBeta1(Matrix X, Matrix Y) {
-		try {
-			return X.transposeMultiply(X).inverse().multiplyTranspose(X).multiply(Y);
-		} catch (MatrixComputationErrorException e) {
-			e.printStackTrace();
-		}
-		System.err.println("Error: You should never see this line, go debug");
-		return X;
-	}
-
-	public static Matrix computeBeta2(Matrix XTXInverseXT, Matrix Y) {
+public class Algorithm {
+	public static Matrix computeBetaHat(Matrix XTXInverseXT, Matrix Y) {
 		return XTXInverseXT.multiply(Y);
 	}
 
-	public static double computeCBeta(Matrix c, Matrix beta) {
-		return c.multiply(beta).get();
+	public static double compute_cBetaHat(Matrix c, Matrix betaHat) {
+		return c.multiply(betaHat).get(0);
 	}
 
 	public static Matrix computeXTXInverse(Matrix X) {
@@ -32,13 +23,13 @@ public class Numerical {
 			return X.transposeMultiply(X).inverse();
 		} catch (MatrixComputationErrorException e) {
 			e.printStackTrace();
+			System.exit(1);
 		}
-		System.err.println("Error: You should never see this line, go debug");
-		return X;
+		return null;
 	}
 
 	public static double computeZ(Matrix c, Matrix beta, double variance) {
-		return computeCBeta(c, beta) / Math.sqrt(variance);
+		return compute_cBetaHat(c, beta) / Math.sqrt(variance);
 	}
 
 	public static double computeZ(double cBeta, double variance) {
@@ -54,12 +45,12 @@ public class Numerical {
 			return c.multiply(X.transposeMultiply(X).inverse())
 					.multiplyTranspose(X).multiply(D)
 					.multiply(X).multiply(X.transposeMultiply(X).inverse())
-					.multiplyTranspose(c).get();
+					.multiplyTranspose(c).get(0);
 		} catch (MatrixComputationErrorException e) {
 			e.printStackTrace();
+			System.exit(1);
 		}
-		System.err.println("Error: You should never see this line, go debug");
-		return 0;
+		return -1;
 	}
 
 	/*
@@ -67,16 +58,16 @@ public class Numerical {
 	 * computation
 	 * ~200 times faster than without using sparse BLAS routines.
 	 */
-	public static double computeVarianceUsingMKLSparseRoutine1(Matrix c, Matrix X, Matrix D) {
+	public static double computeVarianceSparse(Matrix c, Matrix X, Matrix D) {
 		try {
 			return c.multiply(X.transposeMultiply(X).inverse()).multiplyTranspose(X)
 					.multiply(D.sparseMultiplyDense(X.multiply(X.transposeMultiply(X).inverse()))).multiplyTranspose(c)
-					.get();
+					.get(0);
 		} catch (MatrixComputationErrorException e) {
 			e.printStackTrace();
+			System.exit(1);
 		}
-		System.err.println("Error: You should never see this line, go debug");
-		return 0;
+		return -1;
 	}
 
 	/*
@@ -84,34 +75,9 @@ public class Numerical {
 	 * computation
 	 * ~200 times faster than without using sparse BLAS routines.
 	 */
-	public static double computeVarianceUsingMKLSparseRoutine2(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse,
+	public static double compute_variance_sparse_fast(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse,
 			Matrix D) {
-		return c.multiply(XTXInverseXT).multiply(D.sparseMultiplyDense(XXTXInverse)).multiplyTranspose(c).get();
-	}
-
-	public static double computeVarianceUsingMKLSparseRoutine3(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse,
-			Matrix D) {
-		return c.multiply(XTXInverseXT).multiply(D.diagnalMultiplyDense(XXTXInverse)).multiplyTranspose(c).get();
-	}
-
-	public static double computeVarianceSandwichFullFormula(Matrix c, Matrix XTXInverse, Matrix X, Matrix D) {
-		Matrix sum = new Matrix(X.getCol(), X.getCol());
-		for (int i = 0; i < X.getRow(); i++) {
-			Matrix temp = X.getRowSlice(i).transpose().multiply(X.getRowSlice(i));
-			for (int j = 0; j < sum.getData().length; j++) {
-				sum.getData()[j] += temp.getData()[j] * D.get(i, i);
-			}
-		}
-
-		return c.multiply(XTXInverse).multiply(sum).multiply(XTXInverse).multiplyTranspose(c).get();
-	}
-
-	public static double computeVarianceSandwich(Matrix c, Matrix XTXInverse, Matrix X, Matrix D) {
-		double sum = 0.0;
-		for (int i = 0; i < X.getRow(); i++) {
-			sum += Math.pow(c.multiply(XTXInverse).multiplyTranspose(X.getRowSlice(i)).get(), 2) * D.get(i, i);
-		}
-		return sum;
+		return c.multiply(XTXInverseXT).multiply(D.sparseMultiplyDense(XXTXInverse)).multiplyTranspose(c).get(0);
 	}
 
 	/*
@@ -145,46 +111,13 @@ public class Numerical {
 		return Math.min(A, B);
 	}
 
-	public static int computeActivationStatus(double SPRT, double upper, double lower) {
+	public static int compute_activation_stat(double SPRT, double upper, double lower) {
 		if (SPRT > upper)
 			return 1;
 		else if (SPRT < lower)
 			return -1;
 		else
 			return 0;
-	}
-
-	public static double[][] estimateTheta1(Dataset dataset, Matrix X, Matrix C, double Z, boolean[] ROI) {
-		double[][] ret = new double[C.getRow()][dataset.getX() * dataset.getY() * dataset.getZ()];
-		Matrix XTXInverse = computeXTXInverse(X);
-		Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-		Matrix XXTXInverse = X.multiply(XTXInverse);
-		double[] CTXTXInverseC = new double[C.getRow()];
-		for (int i = 0; i < C.getRow(); i++) {
-			Matrix c = C.getRowSlice(i);
-			CTXTXInverseC[i] = c.transposeMultiply(XTXInverse).multiply(c).get();
-		}
-		double[] H = computeH(XXTXInverse, X);
-		for (int x = 0; x < dataset.getX(); x++) {
-			for (int y = 0; y < dataset.getY(); y++) {
-				for (int z = 0; z < dataset.getZ(); z++) {
-					if (ROI[x * dataset.getY() * dataset.getZ() + y * dataset.getZ() + z]) {
-						Matrix Y = dataset.getBoldResponseAsMatrix(x, y, z);
-						Matrix beta = computeBeta2(XTXInverseXT, Y);
-						double[] R = computeR(Y, X, beta);
-						Matrix D = generateD(R, H);
-						double[] variance = new double[C.getRow()];
-						for (int i = 0; i < C.getRow(); i++) {
-							Matrix c = C.getRowSlice(i);
-							variance[i] = computeVarianceUsingMKLSparseRoutine3(c, XTXInverseXT, XXTXInverse, D);
-							ret[i][x * dataset.getY() * dataset.getZ() + y * dataset.getZ() + z] = Z
-									* Math.sqrt(variance[i]);
-						}
-					}
-				}
-			}
-		}
-		return ret;
 	}
 
 	public static double computeTheta1(double Z, double variance) {
@@ -221,20 +154,12 @@ public class Numerical {
 	 * D_values is a single vector is used as a parameter of sparse matrix
 	 * computation
 	 */
-	public static Matrix generateD(double[] R, double[] H) {
-		double[] D = new double[R.length * R.length];
+	public static Matrix generateD(double[] R, double[] H, MatrixStorageScope datatype) {
+		Matrix D = new Matrix(R.length, R.length, datatype);
 		for (int i = 0; i < R.length; i++) {
 			for (int j = 0; j < R.length; j++) {
-				D[i * R.length + j] = Math.pow(R[i], 2) / (1 - H[i]);
+				D.put(i * R.length + j,  Math.pow(R[i], 2) / (1 - H[i]));
 			}
-		}
-		return new Matrix(D, R.length, R.length);
-	}
-
-	public static double[] generateD_array(double[] R, double[] H) {
-		double[] D = new double[R.length];
-		for (int i = 0; i < R.length; i++) {
-			D[i] = Math.pow(R[i], 2) / (1 - H[i]);
 		}
 		return D;
 	}
@@ -244,9 +169,10 @@ public class Numerical {
 	 * sigma_hat^2 = sum{r_i^2} / (# of scans - # of parameters)
 	 * r_i = Y_i - X * beta_hat
 	 */
+	@Deprecated
 	public static double estimateSigmaHatSquare(double[] response, Matrix X, Matrix beta, int scanNumber, int col) {
 		Matrix XBeta = X.multiply(beta);
-		double[] xBetaArray = XBeta.getData();
+		double[] xBetaArray = XBeta.getArr();
 		double ret = 0.0;
 		for (int i = 0; i < response.length; i++) {
 			ret += Math.pow((response[i] - xBetaArray[i]), 2);
@@ -255,8 +181,9 @@ public class Numerical {
 		return ret;
 	}
 
+	@Deprecated
 	public static double computeVarianceUsingSigmaHatSquare(double sigmaHatSquare, Matrix c, Matrix XTXInverse) {
-		return sigmaHatSquare * c.multiply(XTXInverse).multiplyTranspose(c).get();
+		return sigmaHatSquare * c.multiply(XTXInverse).multiplyTranspose(c).get(0);
 	}
 
 	public static int evaluateConfidenceInterval(double cBeta, double variance, double CI, double theta) {

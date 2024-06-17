@@ -6,18 +6,18 @@ package sprt.exception;
  * @author Ben
  *
  */
-public class VolumeNotMatchException extends Exception {
+public class ImageException extends Exception {
 
 	/**
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
 
-	public VolumeNotMatchException() {
+	public ImageException() {
 		super("The Actual Volume Does Not Match The Specified Size!");
 	}
 
-	public VolumeNotMatchException(String errorMessage) {
+	public ImageException(String errorMessage) {
 		super(errorMessage);
 	}
 }
