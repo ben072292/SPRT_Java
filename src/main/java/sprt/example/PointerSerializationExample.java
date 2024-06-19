@@ -3,95 +3,140 @@ package sprt.example;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.function.Function;
 import org.bytedeco.javacpp.DoublePointer;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
-import java.util.Arrays;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
+import java.util.ArrayList;
 import java.util.List;
 
 public class PointerSerializationExample {
-    static class MySerializableClass implements Serializable {
-        private static final long serialVersionUID = 1L;
-    
+
+    static class CustomData implements Serializable {
+        private transient double[] dataArray;
         private transient DoublePointer doublePointer;
-        private int id;
-        private String name;
-    
-        public MySerializableClass(int id, String name) {
-            this.id = id;
-            this.name = name;
-            this.doublePointer = new DoublePointer(10);
-            for(int i = 0; i < 10; i++){
-                doublePointer.put(i, i+0.5);
-            }
+
+        public CustomData(double[] dataArray) {
+            this.dataArray = dataArray;
         }
-    
-        private void writeObject(ObjectOutputStream oos) throws IOException {
-            oos.defaultWriteObject();
-            // No need to serialize the DoublePointer
+
+        public double[] getDataArray() {
+            return dataArray;
         }
-    
-        private void readObject(ObjectInputStream ois) throws ClassNotFoundException, IOException {
-            ois.defaultReadObject();
-            this.doublePointer = new DoublePointer(1.0); // Reinitialize after deserialization
+
+        public void setDataArray(double[] dataArray) {
+            this.dataArray = dataArray;
         }
-    
+
         public DoublePointer getDoublePointer() {
             return doublePointer;
         }
-    
-        public int getId() {
-            return id;
+
+        // private void writeObject(ObjectOutputStream out) throws IOException {
+        //     out.defaultWriteObject();
+        //     if (dataArray != null) {
+        //         out.writeInt(dataArray.length);
+        //         for (double value : dataArray) {
+        //             out.writeDouble(value);
+        //         }
+        //     }
+        // }
+
+        private void writeObject(ObjectOutputStream out) throws IOException {
+            out.defaultWriteObject();
+            if (dataArray != null) {
+                out.writeInt(dataArray.length);
+                for (double value : dataArray) {
+                    long bits = Double.doubleToRawLongBits(value);
+                    long swappedBits = Long.reverseBytes(bits); // has to change the endianess (from big to little) to produce the correct result
+                    out.writeLong(swappedBits);
+                }
+            }
         }
-    
-        public String getName() {
-            return name;
-        }
-    
-        public void setDoublePointer(DoublePointer doublePointer) {
-            this.doublePointer = doublePointer;
+
+        private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+            in.defaultReadObject();
+            int length = in.readInt();
+
+            ByteBuffer byteBuffer = ByteBuffer.allocateDirect(length * Double.BYTES);//.order(ByteOrder.nativeOrder());
+            ReadableByteChannel channel = Channels.newChannel(in);
+            channel.read(byteBuffer);
+            byteBuffer.flip(); // Prepare the buffer for reading
+            doublePointer = new DoublePointer(byteBuffer.asDoubleBuffer());
+            // System.out.println("==================================== " + byteBuffer.asDoubleBuffer().get(0) + " " + doublePointer.get(0));
+            dataArray = null; // Set dataArray to null after loading into DoublePointer
         }
     }
-
 
     public static void main(String[] args) {
-        SparkConf conf = new SparkConf().setAppName("SparkExample").setMaster("local[*]");
-        JavaSparkContext sc = new JavaSparkContext(conf);
+        SparkConf conf = new SparkConf().setAppName("SparkDoublePointerExample").setMaster("local[*]");
+        try (JavaSparkContext sc = new JavaSparkContext(conf)) {
+            // Sample data
+            List<CustomData> dataList = new ArrayList<>();
+            dataList.add(new CustomData(new double[] { 1.0, 2.0, 3.0 }));
+            dataList.add(new CustomData(new double[] { 4.0, 5.0, 6.0 }));
 
-        // Create a list of MySerializableClass objects
-        List<MySerializableClass> list = Arrays.asList(
-                new MySerializableClass(1, "Object1"),
-                new MySerializableClass(2, "Object2"),
-                new MySerializableClass(3, "Object3"));
+            // Create RDD
+            JavaRDD<CustomData> rdd = sc.parallelize(dataList);
 
-        // Parallelize the list
-        JavaRDD<MySerializableClass> rdd = sc.parallelize(list);
+            // Map step: Convert DoublePointer to double[]
+            JavaRDD<Long> addresses_RDD = rdd.map(customData -> {
+                long address = customData.getDoublePointer().address();
+                return address;
+            });
 
-        // Perform a map transformation
-        JavaRDD<String> resultRDD = rdd.map(new Function<MySerializableClass, String>() {
-            @Override
-            public String call(MySerializableClass obj) throws Exception {
-                // Access the DoublePointer (reinitialized after deserialization)
-                DoublePointer p = new DoublePointer(10);
-                for(int i = 0; i < 10; i++){
-                    p.put(i, i+0.5+obj.getId());
+            JavaRDD<double[]> mappedRDD = addresses_RDD.map(address1->{
+                double[] ret = new double[3];
+                DoublePointer pointer = new DoublePointer(){{this.address = address1;}};
+                pointer.get(ret);
+                return ret;
+            }); 
+
+            // Reduce step: Element-wise sum
+            double[] elementWiseSum = mappedRDD.reduce((array1, array2) -> {
+                double[] result = new double[array1.length];
+                for (int i = 0; i < array1.length; i++) {
+                    result[i] = array1[i] + array2[i];
                 }
-                obj.setDoublePointer(p);
-                double value = obj.getDoublePointer().get(5);
-                return "ID: " + obj.getId() + ", Name: " + obj.getName() + ", DoublePointer Value: " + value;
+                return result;
+            });
+
+            // Print the result
+            System.out.println("Element-wise sum:");
+            for (double value : elementWiseSum) {
+                System.out.print(value + " ");
             }
-        });
+            System.out.println();
 
-        // Collect and print the results
-        List<String> results = resultRDD.collect();
-        for (String result : results) {
-            System.out.println(result);
+            sc.stop();
         }
-
-        sc.stop();
     }
+
+    // public static void main(String[] args) {
+    // // Allocate a direct ByteBuffer with capacity for 10 doubles (8 bytes each)
+    // int capacity = 10 * Double.BYTES; // Double.BYTES is 8
+    // ByteBuffer buffer = ByteBuffer.allocateDirect(capacity);
+    // buffer.order(ByteOrder.nativeOrder()); // Set byte order to native order
+
+    // // Fill the ByteBuffer with double data
+    // for (int i = 0; i < 10; i++) {
+    // buffer.putDouble(i * 1.0); // Example: setting values
+    // }
+
+    // // Flip the buffer to prepare it for reading
+    // buffer.flip();
+
+    // // Create a DoublePointer using the direct ByteBuffer
+    // DoublePointer doublePointer = new DoublePointer(buffer.asDoubleBuffer());
+
+    // // Verify the values using the DoublePointer
+    // for (int i = 0; i < 10; i++) {
+    // System.out.println(doublePointer.get(i));
+    // }
+    // }
 }

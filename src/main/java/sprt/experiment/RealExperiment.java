@@ -16,7 +16,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.broadcast.Broadcast;
 
-import sprt.CollectedDataset;
+import sprt.ReduceData;
 import sprt.Config;
 import sprt.Contrasts;
 import sprt.Dataset;
@@ -61,52 +61,49 @@ public class RealExperiment implements Serializable {
 		DesignMatrix designMatrix = new DesignMatrix("dat/design_easy.txt", config.MAX_SCAN, config.COL);
 		Contrasts contrasts = new Contrasts("dat/contrasts.txt");
 		config.setContrasts(contrasts);
-		Matrix C = contrasts.toMatrix(MatrixStorageScope.HEAP);
-		Broadcast<Matrix> broadcastC = sc.broadcast(C);
-		Matrix X;
+		ArrayList<Matrix> C = contrasts.toMatrices();
+		Broadcast<ArrayList<Matrix>> bcastC = sc.broadcast(C);
 		System.out.println("Complete");
 
-		// Read in first scan to get some brain volume metadata
-		System.out.println("Read in first scan to get some brain volume metadata");
+		System.out.println("Read in first scan to get some image metadata");
 		int scanNumber = 1;
 		String BOLD_Path = config.assemblyBOLDPath(scanNumber);
 		Image image = new Image();
 		image.readImage(BOLD_Path, scanNumber);
 		config.setImageSpec(image);
-		Dataset BOLD_Dataset = new Dataset(config.getX(), config.getY(), config.getZ());
-		BOLD_Dataset.add(image);
+		Dataset BOLD_dataset = new Dataset(config);
+		BOLD_dataset.add(image);
 		System.out.println("Complete");
 
 		// setup broadcast variables
-		Broadcast<Config> broadcastConfig = sc.broadcast(config);
+		Broadcast<Config> bcastConfig = sc.broadcast(config);
 
-		ArrayList<Matrix> XList = new ArrayList<>();
+		Matrix X = designMatrix.toMatrix().toHeap();
+		Broadcast<Matrix> bcastX = sc.broadcast(X);
+
 		ArrayList<Matrix> XTXInverseList = new ArrayList<>();
 		ArrayList<Matrix> XTXInverseXTList = new ArrayList<>();
 		ArrayList<Matrix> XXTXInverseList = new ArrayList<>();
 		ArrayList<double[]> HList = new ArrayList<>();
 		for (int i = 1; i <= config.MAX_SCAN; i++) {
 			if (i <= config.K) {
-				XList.add(null);
 				XTXInverseList.add(null);
 				XTXInverseXTList.add(null);
 				XXTXInverseList.add(null);
 				HList.add(null);
 			} else {
-				X = designMatrix.toMatrix(i, MatrixStorageScope.HEAP);
-				Matrix XTXInverse = computeXTXInverse(X);
-				Matrix XTXInverseXT = XTXInverse.multiplyTranspose(X);
-				Matrix XXTXInverse = X.multiply(XTXInverse);
+				X = X.setRow(i);
+				Matrix XTXInverse = computeXTXInverse(X).toHeap();
+				Matrix XTXInverseXT = XTXInverse.mmult(X).toHeap();
+				Matrix XXTXInverse = X.mmul(XTXInverse).toHeap();
 				double[] H = computeH(XXTXInverse, X);
-				XList.add(X);
+				
 				XTXInverseList.add(XTXInverse);
-
 				XTXInverseXTList.add(XTXInverseXT);
 				XXTXInverseList.add(XXTXInverse);
 				HList.add(H);
 			}
 		}
-		Broadcast<ArrayList<Matrix>> bcastXList = sc.broadcast(XList);
 		Broadcast<ArrayList<Matrix>> bcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
 		Broadcast<ArrayList<Matrix>> bcastXXTXInverseList = sc.broadcast(XXTXInverseList);
 		Broadcast<ArrayList<double[]>> bcastHList = sc.broadcast(HList);
@@ -116,15 +113,14 @@ public class RealExperiment implements Serializable {
 			System.out.println("Reading Scan " + scanNumber);
 			BOLD_Path = config.assemblyBOLDPath(scanNumber);
 			image.readImage(BOLD_Path, scanNumber);
-			BOLD_Dataset.add(image);
+			BOLD_dataset.add(image);
 		}
-		// System.out.println(dataset.getVolume(config.K));
 
 		// Prepare
 		System.out.println(
 				new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
 
-		JavaRDD<double[]> BOLD_RDD = sc.parallelize(BOLD_Dataset.toDD(config.enableROI, config.getROI()));
+		JavaRDD<double[]> BOLD_RDD = sc.parallelize(BOLD_dataset.toDD());
 
 		start = System.nanoTime();
 
@@ -132,7 +128,7 @@ public class RealExperiment implements Serializable {
 			scanStart = System.nanoTime();
 			int currentScanNumber = scanNumber;
 
-			Broadcast<Integer> broadcastStartScanNumber = sc.broadcast(scanNumber);
+			Broadcast<Integer> bcastStartScanNumber = sc.broadcast(scanNumber);
 
 			ArrayList<Image> incImages = new ArrayList<>();
 			for (; currentScanNumber < scanNumber + batchSize
@@ -141,10 +137,9 @@ public class RealExperiment implements Serializable {
 				image.readImage(BOLD_Path, currentScanNumber);
 				incImages.add(image);
 			}
+			BOLD_dataset.setImages(incImages);
 
-			Dataset incDataset = new Dataset(incImages);
-
-			JavaRDD<double[]> inc_RDD = sc.parallelize(incDataset.toDD(config.enableROI, config.getROI()));
+			JavaRDD<double[]> inc_RDD = sc.parallelize(BOLD_dataset.toDD());
 
 			// Zip the RDDs
 			JavaPairRDD<double[], double[]> zippedRDD = BOLD_RDD.zip(inc_RDD);
@@ -162,35 +157,35 @@ public class RealExperiment implements Serializable {
 
 			Broadcast<Integer> bcastBatchSize = sc.broadcast(incImages.size());
 
-			JavaRDD<ArrayList<CollectedDataset>> collectedDatasets = BOLD_RDD
-					.map(new Function<double[], ArrayList<CollectedDataset>>() {
-						public ArrayList<CollectedDataset> call(double[] dd) {
-							ArrayList<CollectedDataset> ret = new ArrayList<>();
+			JavaRDD<ArrayList<ReduceData>> reduce_RDD = BOLD_RDD
+					.map(new Function<double[], ArrayList<ReduceData>>() {
+						public ArrayList<ReduceData> call(double[] dd) {
+							ArrayList<ReduceData> ret = new ArrayList<>();
 							ret.clear();
-							for (int i = broadcastStartScanNumber.value(); i < broadcastStartScanNumber.value()
+							for (int i = bcastStartScanNumber.value(); i < bcastStartScanNumber.value()
 									+ bcastBatchSize.value(); i++) {
 								Matrix boldResponse = new Matrix(dd, i, 1, MatrixStorageScope.NATIVE);
-								CollectedDataset temp = new CollectedDataset(broadcastConfig.value());
+								ReduceData temp = new ReduceData(bcastConfig.value());
 								Matrix beta = computeBetaHat(bcastXTXInverseXTList.value().get(i - 1),
 										boldResponse);
-								double[] R = computeR(boldResponse, bcastXList.value().get(i - 1), beta);
+								double[] R = computeR(boldResponse, bcastX.value().setRow(i), beta);
 								Matrix D = generateD(R, bcastHList.value().get(i - 1), MatrixStorageScope.NATIVE);
-								// double[] D = generateD_array(R, broadcastHList.value().get(i - 1));
-								for (int j = 0; j < broadcastC.value().getRow(); j++) {
+								// double[] D = generateD_array(R, bcastHList.value().get(i - 1));
+								for (int j = 0; j < bcastC.value().size(); j++) {
 
-									Matrix c = broadcastC.value().getRowSlice(j);
-									double variance = compute_variance_sparse_fast(c,
+									Matrix c = bcastC.value().get(j);
+									double variance = compute_variance_sparse_fastest(c,
 											bcastXTXInverseXTList.value().get(i - 1),
 											bcastXXTXInverseList.value().get(i - 1), D);
 									// double variance = computeVariance(c,
-									// broadcastXList.getValue().get(i-1), D);
+									// bcastXList.getValue().get(i-1), D);
 									// double variance = 1.0;
 									double cBeta = compute_cBetaHat(c, beta);
-									double SPRT = compute_SPRT(cBeta, broadcastConfig.value().theta0, 0.0,
+									double SPRT = compute_SPRT(cBeta, bcastConfig.value().theta0, 0.0,
 											variance);
 									int SPRTActivationStatus = compute_activation_stat(SPRT,
-											broadcastConfig.value().SPRTUpperBound,
-											broadcastConfig.value().SPRTLowerBound);
+											bcastConfig.value().SPRTUpperBound,
+											bcastConfig.value().SPRTLowerBound);
 									temp.setVariance(j, variance);
 									temp.setCBeta(j, cBeta);
 									temp.setTheta1(j, 0.0);
@@ -205,13 +200,13 @@ public class RealExperiment implements Serializable {
 
 			// 3. Get statistics from collected dataset
 
-			SprtStat result = collectedDatasets
-					.map(new Function<ArrayList<CollectedDataset>, SprtStat>() {
-						public SprtStat call(ArrayList<CollectedDataset> collectedDatasets) {
-							int[][][] SPRTActivationCounter = new int[collectedDatasets.size()][broadcastC.value()
-									.getRow()][3];
+			SprtStat result = reduce_RDD
+					.map(new Function<ArrayList<ReduceData>, SprtStat>() {
+						public SprtStat call(ArrayList<ReduceData> collectedDatasets) {
+							int[][][] SPRTActivationCounter = new int[collectedDatasets.size()][bcastC.value()
+									.size()][3];
 							for (int i = 0; i < collectedDatasets.size(); i++) {
-								for (int j = 0; j < broadcastC.value().getRow(); j++) {
+								for (int j = 0; j < bcastC.value().size(); j++) {
 									if (collectedDatasets.get(i).getSPRTActivationStatus(j) == -1) {
 										SPRTActivationCounter[i][j][0]++;
 									} else if (collectedDatasets.get(i).getSPRTActivationStatus(j) == 0) {

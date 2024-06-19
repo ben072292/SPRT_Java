@@ -9,12 +9,19 @@ import sprt.exception.MatrixComputationErrorException;
 import static org.bytedeco.mkl.global.mkl_rt.*;
 
 import java.io.FileWriter;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 
 /**
  * Matrix is the elemental computing unit in matrix computation. All
- * datasets/volumes
- * need to tranform to Matrix objects in order to perform any computation
+ * datasets need to tranform to Matrix objects in order to perform any
+ * computation
  * 
  * @author Ben
  *
@@ -26,17 +33,16 @@ public class Matrix implements Serializable {
 
 	private static final double alpha = 1.0;
 	private static final double beta = 0.0;
-
-	private double[] arr;
+	private transient double[] arr;
 	private transient DoublePointer nativeBuf;
 	private int row;
 	private int col;
-	private MatrixStorageScope datatype = MatrixStorageScope.HEAP;
+	private MatrixStorageScope storageScope = MatrixStorageScope.HEAP;
 
 	public Matrix(int row, int col, MatrixStorageScope datatype) {
 		this.row = row;
 		this.col = col;
-		this.datatype = datatype;
+		this.storageScope = datatype;
 		switch (datatype) {
 			case HEAP:
 				this.arr = new double[row * col];
@@ -48,7 +54,7 @@ public class Matrix implements Serializable {
 	public Matrix(double[] array, int row, int col, MatrixStorageScope datatype) {
 		this.row = row;
 		this.col = col;
-		this.datatype = datatype;
+		this.storageScope = datatype;
 		switch (datatype) {
 			case HEAP:
 				this.arr = array;
@@ -57,11 +63,59 @@ public class Matrix implements Serializable {
 		}
 	}
 
+	public Matrix(DoublePointer buf, int row, int col, MatrixStorageScope datatype) {
+		this.row = row;
+		this.col = col;
+		this.storageScope = datatype;
+		switch (datatype) {
+			case HEAP:
+				buf.put(this.arr);
+			case NATIVE:
+				this.nativeBuf = buf;
+		}
+	}
+
+	public Matrix(DoubleBuffer buf, int row, int col, MatrixStorageScope datatype) {
+		this.row = row;
+		this.col = col;
+		this.storageScope = datatype;
+		switch (datatype) {
+			case HEAP:
+				buf.put(this.arr);
+			case NATIVE:
+				this.nativeBuf = new DoublePointer(buf);
+		}
+	}
+
+	public Matrix(double[] array, int row, int col) {
+		this.row = row;
+		this.col = col;
+		this.storageScope = MatrixStorageScope.HEAP;
+		this.arr = array;
+
+	}
+
+	public Matrix(DoublePointer buf, int row, int col) {
+		this.row = row;
+		this.col = col;
+		this.storageScope = MatrixStorageScope.NATIVE;
+		this.nativeBuf = buf;
+
+	}
+
+	public Matrix(DoubleBuffer buf, int row, int col) {
+		this.row = row;
+		this.col = col;
+		this.storageScope = MatrixStorageScope.NATIVE;
+		this.nativeBuf = new DoublePointer(buf);
+
+	}
+
 	public Matrix(Matrix matrix) {
 		this.row = matrix.row;
 		this.col = matrix.col;
-		this.datatype = matrix.datatype;
-		switch (datatype) {
+		this.storageScope = matrix.storageScope;
+		switch (storageScope) {
 			case HEAP:
 				this.arr = matrix.arr.clone();
 			case NATIVE:
@@ -69,53 +123,95 @@ public class Matrix implements Serializable {
 		}
 	}
 
-	public Matrix deserialize(){
-		if(this.arr != null && this.nativeBuf == null){
-			this.nativeBuf = new DoublePointer(this.arr);
-			this.arr = null;
-			this.datatype = MatrixStorageScope.NATIVE;
+	public Matrix toHeap() {
+		if (this.arr == null) {
+			this.arr = new double[this.row * this.col];
+			this.nativeBuf.get(this.arr);
+			this.nativeBuf.deallocate();
+			this.storageScope = MatrixStorageScope.HEAP;
+			this.nativeBuf = null;
 		}
 		return this;
 	}
 
-	public Matrix multiply(Matrix matrix) {
-		this.deserialize();
-		matrix.deserialize();
+	public Matrix toNative() {
+		if (this.nativeBuf == null) {
+			this.nativeBuf = new DoublePointer(this.arr);
+			this.arr = null;
+			this.storageScope = MatrixStorageScope.NATIVE;
+			this.arr = null;
+		}
+		return this;
+	}
+
+	private void writeObject(ObjectOutputStream out) throws IOException {
+		this.toHeap();
+		out.defaultWriteObject();
+		if (this.arr != null) {
+			out.writeInt(this.arr.length);
+			for (double value : this.arr) {
+				long bits = Double.doubleToRawLongBits(value);
+				long swappedBits = Long.reverseBytes(bits); // has to change the endianess (from big to little) to
+															// produce the correct result
+				out.writeLong(swappedBits);
+			}
+		}
+	}
+
+	private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+		in.defaultReadObject();
+		int length = in.readInt();
+
+		ByteBuffer byteBuffer = ByteBuffer.allocateDirect(length * Double.BYTES);// .order(ByteOrder.nativeOrder());
+		ReadableByteChannel channel = Channels.newChannel(in);
+		channel.read(byteBuffer);
+		byteBuffer.flip(); // Prepare the buffer for reading
+		this.nativeBuf = new DoublePointer(byteBuffer.asDoubleBuffer());
+		this.storageScope = MatrixStorageScope.NATIVE;
+		System.out.println("Deserialize");
+	}
+
+	public Matrix mmul(Matrix matrix) {
+		this.toNative();
+		matrix.toNative();
 		Matrix res = new Matrix(this.row, matrix.col, MatrixStorageScope.NATIVE);
 		cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-				this.row, matrix.col, this.col, alpha, this.nativeBuf, this.col, matrix.nativeBuf, matrix.col, beta,
+				this.row, matrix.col, this.col, alpha, this.nativeBuf, this.col, matrix.nativeBuf, matrix.col,
+				beta,
 				res.nativeBuf,
 				matrix.col);
 		return res;
 	}
 
-	public Matrix transposeMultiply(Matrix matrix) {
-		this.deserialize();
-		matrix.deserialize();
+	public Matrix tmmul(Matrix matrix) {
+		this.toNative();
+		matrix.toNative();
 		Matrix res = new Matrix(this.col, matrix.col, MatrixStorageScope.NATIVE);
 		cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
-				this.col, matrix.col, this.row, alpha, this.nativeBuf, this.col, matrix.nativeBuf, matrix.col, beta,
+				this.col, matrix.col, this.row, alpha, this.nativeBuf, this.col, matrix.nativeBuf, matrix.col,
+				beta,
 				res.nativeBuf,
 				matrix.col);
 		return res;
 	}
 
-	public Matrix multiplyTranspose(Matrix matrix) {
-		this.deserialize();
-		matrix.deserialize();
+	public Matrix mmult(Matrix matrix) {
+		this.toNative();
+		matrix.toNative();
 		Matrix res = new Matrix(this.row, matrix.row, MatrixStorageScope.NATIVE);
 		cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-				this.row, matrix.row, this.col, alpha, this.nativeBuf, this.col, matrix.nativeBuf, matrix.col, beta,
+				this.row, matrix.row, this.col, alpha, this.nativeBuf, this.col, matrix.nativeBuf, matrix.col,
+				beta,
 				res.nativeBuf,
 				matrix.row);
 		return res;
 	}
 
-	public Matrix sparseMultiplyDense(Matrix matrix) {
-		this.deserialize();
-		matrix.deserialize();
+	public Matrix smmul(Matrix matrix) {
+		this.toNative();
+		matrix.toNative();
 		try {
-			return sparseMultiplyDense(matrix, SPARSE_MATRIX_TYPE_DIAGONAL, SPARSE_FILL_MODE_LOWER,
+			return smmul(matrix, SPARSE_MATRIX_TYPE_DIAGONAL, SPARSE_FILL_MODE_LOWER,
 					SPARSE_DIAG_NON_UNIT);
 		} catch (MatrixComputationErrorException e) {
 			e.printStackTrace();
@@ -123,22 +219,24 @@ public class Matrix implements Serializable {
 		return matrix;
 	}
 
-	public Matrix diagnalMultiplyDense(Matrix matrix) {
-		this.deserialize();
-		matrix.deserialize();
-		Matrix res = new Matrix(this.row, matrix.col, MatrixStorageScope.NATIVE);
+	public Matrix dmmul(Matrix matrix) {
+		this.toNative();
+		matrix.toNative();
+		Matrix res = new Matrix(this.row, matrix.col, this.storageScope());
 		for (int i = 0; i < this.row; i++) {
 			double val = this.get(i, i);
 			for (int j = 0; j < matrix.col; j++) {
-				res.nativeBuf.put(i * matrix.col + j, matrix.get(i, j) * val);
+				res.put(i * matrix.col + j, matrix.get(i, j) * val);
 			}
 		}
 		return res;
 	}
 
-	public Matrix sparseMultiplyDense(Matrix matrix, int type, int mode, int diag)
+	public Matrix smmul(Matrix matrix, int type, int mode, int diag)
 			throws MatrixComputationErrorException { // this: sparse, matrix: dense
-		Matrix res = new Matrix(this.row, matrix.col, MatrixStorageScope.NATIVE);
+		this.toNative();
+		matrix.toNative();
+		Matrix res = new Matrix(this.row, matrix.col, this.storageScope());
 		CSR csr = new CSR(this);
 		sparse_matrix D = new sparse_matrix();
 		int resCSR = mkl_sparse_d_create_csr(D, SPARSE_INDEX_BASE_ZERO, this.row, this.col, csr.rowsStart, csr.rowsEnd,
@@ -189,24 +287,16 @@ public class Matrix implements Serializable {
 			}
 
 			this.values = new DoublePointer(MKL_malloc((valsIndex) * Double.BYTES, 64));
-			for (int i = 0; i < valsIndex; i++) {
-				this.values.put(i, values[i]);
-			}
+			this.values.put(values);
 
 			this.rowsStart = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 32));
-			for (int i = 0; i < matrix.row; i++) {
-				this.rowsStart.put(i, rowsIndex[i]);
-			}
+			this.rowsStart.put(rowsIndex, 0, matrix.row);
 
 			this.rowsEnd = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 32));
-			for (int i = 0; i < matrix.row; i++) {
-				this.rowsEnd.put(i, rowsIndex[i + 1]);
-			}
+			this.rowsEnd.put(rowsIndex, 1, matrix.row);
 
 			this.colIndex = new IntPointer(MKL_malloc((ciIndex) * Integer.BYTES, 32));
-			for (int i = 0; i < ciIndex; i++) {
-				this.colIndex.put(i, colIndex[i]);
-			}
+			this.colIndex.put(colIndex);
 		}
 
 		public void free() {
@@ -217,7 +307,8 @@ public class Matrix implements Serializable {
 		}
 	}
 
-	public Matrix inverse() throws MatrixComputationErrorException {
+	public Matrix minv() throws MatrixComputationErrorException {
+		this.toNative();
 		int result;
 		Matrix matrix = new Matrix(this);
 		IntPointer I = new IntPointer(Math.max(1, Math.min(matrix.row, matrix.col)));
@@ -240,14 +331,15 @@ public class Matrix implements Serializable {
 		return matrix;
 	}
 
-	public Matrix multiply(double d) {
+	public Matrix mmul(double d) {
+		this.toNative();
 		for (int i = 0; i < row * col; i++) {
 			this.put(i, this.get(i) * d);
 		}
 		return this;
 	}
 
-	public void showMatrix(int howMany, String s) {
+	public void print(int howMany, String s) {
 		System.out.println("Show Matrix: Size: " + this.row + "*" + this.col + s);
 		for (int i = 0; i < Math.min(this.row, howMany); i++) {
 			for (int j = 0; j < Math.min(this.col, howMany); j++) {
@@ -259,8 +351,8 @@ public class Matrix implements Serializable {
 
 	}
 
-	public void showMatrix(int howMany) {
-		showMatrix(howMany, "");
+	public void print(int howMany) {
+		print(howMany, "");
 	}
 
 	public void write(String filename, String descr) {
@@ -305,7 +397,7 @@ public class Matrix implements Serializable {
 	}
 
 	public double get(int pos) {
-		switch (datatype) {
+		switch (storageScope) {
 			case HEAP:
 				return this.arr[pos];
 			case NATIVE:
@@ -316,7 +408,7 @@ public class Matrix implements Serializable {
 	}
 
 	public double get(int x, int y) {
-		switch (datatype) {
+		switch (storageScope) {
 			case HEAP:
 				return this.arr[x * col + y];
 			case NATIVE:
@@ -327,7 +419,7 @@ public class Matrix implements Serializable {
 	}
 
 	public void put(int pos, double val) {
-		switch (datatype) {
+		switch (storageScope) {
 			case HEAP:
 				this.arr[pos] = val;
 			case NATIVE:
@@ -341,7 +433,7 @@ public class Matrix implements Serializable {
 	}
 
 	public Matrix getRowSlice(int row) {
-		Matrix res = new Matrix(1, this.col, this.datatype);
+		Matrix res = new Matrix(1, this.col, this.storageScope);
 		for (int i = 0; i < this.getCol(); i++) {
 			res.put(i, this.get(row, i));
 		}
@@ -349,11 +441,25 @@ public class Matrix implements Serializable {
 	}
 
 	public Matrix getColSlice(int col) {
-		Matrix res = new Matrix(this.row, 1, this.datatype);
+		Matrix res = new Matrix(this.row, 1, this.storageScope);
 		for (int i = 0; i < this.getRow(); i++) {
 			res.put(i, this.get(i, col));
 		}
 		return res;
+	}
+
+	public Matrix setRow(int row) {
+		this.row = row;
+		return this;
+	}
+
+	public Matrix setCol(int col) {
+		this.col = col;
+		return this;
+	}
+
+	public MatrixStorageScope storageScope() {
+		return this.storageScope;
 	}
 
 }

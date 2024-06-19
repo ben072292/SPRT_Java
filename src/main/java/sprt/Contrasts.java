@@ -8,7 +8,6 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Scanner;
-import sprt.Matrix.MatrixStorageScope;
 
 /**
  * Processes the contrast files used for SPRT
@@ -19,12 +18,12 @@ import sprt.Matrix.MatrixStorageScope;
 public class Contrasts implements Serializable {
 	public int contrastLength = 0;
 	public int numContrasts = 0;
-	private int[][] contrasts;
+	private double[][] contrasts;
 
 	public Contrasts(int numOfContrasts, int contrastLength) {
 		this.numContrasts = numOfContrasts;
 		this.contrastLength = contrastLength;
-		this.contrasts = new int[numOfContrasts][contrastLength];
+		this.contrasts = new double[numOfContrasts][contrastLength];
 		readStdout();
 	}
 
@@ -37,7 +36,7 @@ public class Contrasts implements Serializable {
 		if (this.numContrasts < numOfContrasts || this.contrastLength < contrastLength)
 			System.out.println("Specified dimensions too large, will use dimensions of the whole file.");
 		else {
-			int[][] arr = new int[numOfContrasts][contrastLength];
+			double[][] arr = new double[numOfContrasts][contrastLength];
 			for (int i = 0; i < numOfContrasts; i++) {
 				for (int j = 0; j < contrastLength; j++) {
 					arr[i][j] = this.contrasts[i][j];
@@ -54,7 +53,7 @@ public class Contrasts implements Serializable {
 		for (int i = 1; i <= this.numContrasts; i++) {
 			System.out.print(
 					"Input contrast " + i + " Out Of " + this.numContrasts + " (Size " + this.contrastLength + ") :");
-			int[] array = Arrays.stream(scanner.nextLine().split(" ")).mapToInt(Integer::parseInt).toArray();
+			double[] array = Arrays.stream(scanner.nextLine().split(" ")).mapToDouble(Integer::parseInt).toArray();
 			if (array.length != this.contrastLength) {
 				System.out.println("Size not match: Expect " + this.contrastLength + ", Actual: " + array.length + ".");
 				scanner.close();
@@ -68,13 +67,13 @@ public class Contrasts implements Serializable {
 	}
 
 	public void readFile(String path) {
-		List<int[]> rowList = new ArrayList<>();
+		List<double[]> rowList = new ArrayList<>();
 		BufferedReader reader;
 		try {
 			reader = new BufferedReader(new FileReader(path));
 			String line = reader.readLine();
 			while (line != null) {
-				int[] array = Arrays.stream(line.split("\\s")).mapToInt(Integer::parseInt).toArray();
+				double[] array = Arrays.stream(line.split("\\s")).mapToDouble(Integer::parseInt).toArray();
 				if (this.contrastLength == 0)
 					this.contrastLength = array.length;
 				rowList.add(array);
@@ -85,28 +84,18 @@ public class Contrasts implements Serializable {
 			e.printStackTrace();
 		}
 		this.numContrasts = rowList.size();
-		this.contrasts = new int[this.numContrasts][this.contrastLength];
+		this.contrasts = new double[this.numContrasts][this.contrastLength];
 		for (int i = 0; i < this.numContrasts; i++) {
 			this.contrasts[i] = rowList.get(i);
 		}
 	}
 
-	public Matrix toMatrix(MatrixStorageScope datatype) {
-		double[] arr = new double[this.numContrasts * this.contrastLength];
-		for (int i = 0; i < this.numContrasts; i++) {
-			for (int j = 0; j < this.contrastLength; j++) {
-				arr[i * this.contrastLength + j] = this.contrasts[i][j];
-			}
+	public ArrayList<Matrix> toMatrices() {
+		ArrayList<Matrix> ret = new ArrayList<>();
+		for(int i = 0; i < numContrasts; i++){
+			ret.add(new Matrix(contrasts[i], 1, this.contrastLength));
 		}
-		return new Matrix(arr, this.numContrasts, this.contrastLength, datatype);
-	}
-
-	public static void main(String[] args) {
-		// Contrasts contrasts = new Contrasts(2, 3);
-		// System.out.println(contrasts.contrasts[1][2]);
-
-		Contrasts contrasts1 = new Contrasts("contrasts.txt", 2, 2);
-		System.out.println(contrasts1.contrasts[1][1]);
+		return ret;
 	}
 
 }

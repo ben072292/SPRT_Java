@@ -11,16 +11,16 @@ import sprt.exception.MatrixComputationErrorException;
  */
 public class Algorithm {
 	public static Matrix computeBetaHat(Matrix XTXInverseXT, Matrix Y) {
-		return XTXInverseXT.multiply(Y);
+		return XTXInverseXT.mmul(Y);
 	}
 
 	public static double compute_cBetaHat(Matrix c, Matrix betaHat) {
-		return c.multiply(betaHat).get(0);
+		return c.mmul(betaHat).get(0);
 	}
 
 	public static Matrix computeXTXInverse(Matrix X) {
 		try {
-			return X.transposeMultiply(X).inverse();
+			return X.tmmul(X).minv();
 		} catch (MatrixComputationErrorException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -42,10 +42,10 @@ public class Algorithm {
 	 */
 	public static double computeVariance(Matrix c, Matrix X, Matrix D) {
 		try {
-			return c.multiply(X.transposeMultiply(X).inverse())
-					.multiplyTranspose(X).multiply(D)
-					.multiply(X).multiply(X.transposeMultiply(X).inverse())
-					.multiplyTranspose(c).get(0);
+			return c.mmul(X.tmmul(X).minv())
+					.mmult(X).mmul(D)
+					.mmul(X).mmul(X.tmmul(X).minv())
+					.mmult(c).get(0);
 		} catch (MatrixComputationErrorException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -60,8 +60,8 @@ public class Algorithm {
 	 */
 	public static double computeVarianceSparse(Matrix c, Matrix X, Matrix D) {
 		try {
-			return c.multiply(X.transposeMultiply(X).inverse()).multiplyTranspose(X)
-					.multiply(D.sparseMultiplyDense(X.multiply(X.transposeMultiply(X).inverse()))).multiplyTranspose(c)
+			return c.mmul(X.tmmul(X).minv()).mmult(X)
+					.mmul(D.smmul(X.mmul(X.tmmul(X).minv()))).mmult(c)
 					.get(0);
 		} catch (MatrixComputationErrorException e) {
 			e.printStackTrace();
@@ -77,7 +77,12 @@ public class Algorithm {
 	 */
 	public static double compute_variance_sparse_fast(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse,
 			Matrix D) {
-		return c.multiply(XTXInverseXT).multiply(D.sparseMultiplyDense(XXTXInverse)).multiplyTranspose(c).get(0);
+		return c.mmul(XTXInverseXT).mmul(D.smmul(XXTXInverse)).mmult(c).get(0);
+	}
+
+	public static double compute_variance_sparse_fastest(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse,
+			Matrix D) {
+		return c.mmul(XTXInverseXT).mmul(D.dmmul(XXTXInverse)).mmult(c).get(0);
 	}
 
 	/*
@@ -129,7 +134,7 @@ public class Algorithm {
 	 * H = X * (X'X)^-1 * X'
 	 */
 	public static double[] computeH(Matrix XXTXInverse, Matrix X) {
-		Matrix H = XXTXInverse.multiplyTranspose(X);
+		Matrix H = XXTXInverse.mmult(X);
 		double[] ret = new double[H.getRow()];
 		for (int i = 0; i < H.getRow(); i++) {
 			ret[i] = H.get(i, i);
@@ -143,7 +148,7 @@ public class Algorithm {
 	 */
 	public static double[] computeR(Matrix Y, Matrix X, Matrix beta) {
 		double[] ret = new double[Y.getRow()];
-		Matrix XBeta = X.multiply(beta);
+		Matrix XBeta = X.mmul(beta);
 		for (int i = 0; i < Y.getRow(); i++) {
 			ret[i] = Y.get(i, 0) - XBeta.get(i, 0);
 		}
@@ -171,7 +176,7 @@ public class Algorithm {
 	 */
 	@Deprecated
 	public static double estimateSigmaHatSquare(double[] response, Matrix X, Matrix beta, int scanNumber, int col) {
-		Matrix XBeta = X.multiply(beta);
+		Matrix XBeta = X.mmul(beta);
 		double[] xBetaArray = XBeta.getArr();
 		double ret = 0.0;
 		for (int i = 0; i < response.length; i++) {
@@ -183,7 +188,7 @@ public class Algorithm {
 
 	@Deprecated
 	public static double computeVarianceUsingSigmaHatSquare(double sigmaHatSquare, Matrix c, Matrix XTXInverse) {
-		return sigmaHatSquare * c.multiply(XTXInverse).multiplyTranspose(c).get(0);
+		return sigmaHatSquare * c.mmul(XTXInverse).mmult(c).get(0);
 	}
 
 	public static int evaluateConfidenceInterval(double cBeta, double variance, double CI, double theta) {

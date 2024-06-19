@@ -108,7 +108,7 @@ public class Image implements Serializable {
 			}
 			this.voxels = new ArrayList<>(x * y * z);
 			line = reader.readLine();
-			int x = 0;
+			// int x = 0;
 			int y = 0;
 			while (line != null) {
 				if (line.contains("Slice")) { // pass this line
@@ -123,7 +123,7 @@ public class Image implements Serializable {
 				y++;
 				if (y == this.y) {
 					y = 0;
-					x++;
+					// x++;
 				}
 				line = reader.readLine();
 			}
@@ -153,9 +153,9 @@ public class Image implements Serializable {
 		}
 	}
 
-	public void setVolume(double[] volume) throws ImageException {
+	public void setVoxels(double[] voxels) throws ImageException {
 		for (int i = 0; i < this.voxels.size(); i++) {
-			this.voxels.set(i, volume[i]);
+			this.voxels.set(i, voxels[i]);
 		}
 	}
 
@@ -175,7 +175,7 @@ public class Image implements Serializable {
 			}
 		}
 		return "Size: [" + x + " " + y + " " + z + "]. There are " + nonZeroCounter
-				+ " Non-zero element in this volume";
+				+ " Non-zero element in this image";
 	}
 
 	public void outputToFile(String path) {

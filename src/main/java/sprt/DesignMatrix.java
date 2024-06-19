@@ -4,7 +4,6 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.util.Arrays;
 
-import sprt.Matrix.MatrixStorageScope;
 import sprt.exception.FileFormatNotCorrectException;
 
 /**
@@ -17,13 +16,13 @@ public class DesignMatrix {
 	private int row;
 	private int col;
 	private String path;
-	private double[][] designMatrix;
+	private double[] arr;
 
 	public DesignMatrix(String path, int row, int col) {
 		this.path = path;
 		this.row = row;
 		this.col = col;
-		this.designMatrix = new double[this.row][this.col];
+		this.arr = new double[this.row * this.col];
 		try {
 			readDesignMatrix(this.path, this.row, this.col);
 		} catch (Exception e) {
@@ -34,7 +33,7 @@ public class DesignMatrix {
 
 	public void readDesignMatrix(String path, int row, int col) throws FileFormatNotCorrectException {
 		BufferedReader reader;
-		int counter = 0;
+		int pos = 0;
 		try {
 			reader = new BufferedReader(new FileReader(path));
 			String line = reader.readLine();
@@ -44,8 +43,8 @@ public class DesignMatrix {
 					reader.close();
 					throw new FileFormatNotCorrectException("Design Matrix: Column Size Not Match!");
 				}
-				this.designMatrix[counter] = array;
-				counter++;
+				System.arraycopy(array, 0, this.arr, pos, array.length);
+				pos+=array.length;
 				line = reader.readLine();
 			}
 			reader.close();
@@ -54,21 +53,8 @@ public class DesignMatrix {
 		}
 	}
 
-	public Matrix toMatrix(int rowToSlice, MatrixStorageScope datatype) {
-		double[] arr = new double[rowToSlice * this.col];
-		for (int i = 0; i < rowToSlice; i++) {
-			for (int j = 0; j < this.col; j++) {
-				arr[i * this.col + j] = this.designMatrix[i][j];
-			}
-		}
-		return new Matrix(arr, rowToSlice, this.col, datatype);
-	}
-
-	// main
-	public static void main(String[] args) {
-		DesignMatrix designMatrix = new DesignMatrix("Latest_data/design_easy.txt", 238, 8);
-		System.out.println(designMatrix.designMatrix[3][6]);
-
+	public Matrix toMatrix(){
+		return new Matrix(this.arr, this.row, this.col);
 	}
 
 }
