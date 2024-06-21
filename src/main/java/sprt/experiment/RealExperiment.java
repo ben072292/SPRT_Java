@@ -64,7 +64,7 @@ public class RealExperiment implements Serializable {
 		Broadcast<ArrayList<Matrix>> bcastC = sc.broadcast(C);
 		System.out.println("Complete");
 
-		System.out.println("Read in first scan to get some image metadata");
+		System.out.println("Read in first scan to complete configuration");
 		int scanNumber = 1;
 		String BOLD_Path = config.assemblyBOLDPath(scanNumber);
 		ArrayList<BOLD> bolds = null;
@@ -115,8 +115,6 @@ public class RealExperiment implements Serializable {
 		System.out.println(
 				new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
 
-		System.out.println("BOLD 100:  value at scan 2: " + bolds.get(100).getBOLD().get(77));
-
 		JavaRDD<BOLD> BOLD_RDD = sc.parallelize(bolds).cache();
 
 		List<Long> nativeAddr_RDD = BOLD_RDD.map(bold -> {
@@ -155,14 +153,14 @@ public class RealExperiment implements Serializable {
 							// 	System.out.println(bold.getPointer().capacity());
 							// }
 							ArrayList<ReduceData> ret = new ArrayList<>();
-							ret.clear();
 							for (int i = bcastStartScanNumber.value(); i < bcastStartScanNumber.value()
 									+ bold.getBatchSize(); i++) {
 								Matrix boldResponse = new Matrix(bold.getPointer(), i, 1);
 								ReduceData temp = new ReduceData(bcastConfig.value());
 								Matrix beta = computeBetaHat(bcastXTXInverseXTList.value().get(i - 1),
 										boldResponse);
-								double[] R = computeR(boldResponse, bcastX.value().setRow(i), beta);
+								Matrix X = new Matrix(bcastX.value().getNativeBuf(), i, bcastX.value().getCol());
+								double[] R = computeR(boldResponse, X, beta);
 								Matrix D = generateD(R, bcastHList.value().get(i - 1), MatrixStorageScope.NATIVE);
 								// double[] D = generateD_array(R, bcastHList.value().get(i - 1));
 								for (int j = 0; j < bcastC.value().size(); j++) {
