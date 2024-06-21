@@ -3,8 +3,6 @@ package sprt;
 import java.io.Serializable;
 import java.util.BitSet;
 
-import sprt.exception.ImageException;
-
 /**
  * Handles all configurable parameters.
  * 
@@ -41,24 +39,6 @@ public class Config implements Serializable {
 		return BOLDPath + BOLDPrefix + (scanNumber - 1) + ".txt";
 	}
 
-	public void setImageSpec(Image image) {
-		try {
-			if (this.x == 0 && this.y == 0 && this.z == 0) {
-				this.x = image.getX();
-				this.y = image.getY();
-				this.z = image.getZ();
-
-				// set ROI here since only first scan will enter this if statement
-				this.ROI = setROI(image);
-			} else {
-				throw new ImageException("Image size has been set and cannot be modified!");
-			}
-
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
-
 	public void expandeImageSize(int x) {
 		this.x *= x;
 	}
@@ -67,14 +47,8 @@ public class Config implements Serializable {
 		this.contrasts = contrasts;
 	}
 
-	public BitSet setROI(Image image) {
-		BitSet ROI = new BitSet(image.getX() * image.getY() * image.getZ());
-		for (int i = 0; i < image.getX() * image.getY() * image.getZ(); i++) {
-			if (image.getVoxel(i) != 0) {
-				ROI.set(i);
-			}
-		}
-		return ROI;
+	public void setROI(BitSet bs){
+		this.ROI = bs;
 	}
 
 	public int getX() {
@@ -87,6 +61,18 @@ public class Config implements Serializable {
 
 	public int getZ() {
 		return this.z;
+	}
+
+	public void setX(int val){
+		this.x = val;
+	}
+
+	public void setY(int val){
+		this.y = val;
+	}
+
+	public void setZ(int val){
+		this.z = val;
 	}
 
 	public BitSet getROI() {

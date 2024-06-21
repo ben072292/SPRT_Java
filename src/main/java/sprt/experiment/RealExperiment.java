@@ -8,8 +8,8 @@ import java.io.PrintStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -19,9 +19,8 @@ import org.apache.spark.broadcast.Broadcast;
 import sprt.ReduceData;
 import sprt.Config;
 import sprt.Contrasts;
-import sprt.Dataset;
 import sprt.DesignMatrix;
-import sprt.Image;
+import sprt.BOLD;
 import sprt.Matrix;
 import sprt.Matrix.MatrixStorageScope;
 
@@ -68,11 +67,8 @@ public class RealExperiment implements Serializable {
 		System.out.println("Read in first scan to get some image metadata");
 		int scanNumber = 1;
 		String BOLD_Path = config.assemblyBOLDPath(scanNumber);
-		Image image = new Image();
-		image.readImage(BOLD_Path, scanNumber);
-		config.setImageSpec(image);
-		Dataset BOLD_dataset = new Dataset(config);
-		BOLD_dataset.add(image);
+		ArrayList<BOLD> bolds = null;
+		bolds = BOLD.read(BOLD_Path, config, bolds);
 		System.out.println("Complete");
 
 		// setup broadcast variables
@@ -97,7 +93,7 @@ public class RealExperiment implements Serializable {
 				Matrix XTXInverseXT = XTXInverse.mmult(X).toHeap();
 				Matrix XXTXInverse = X.mmul(XTXInverse).toHeap();
 				double[] H = computeH(XXTXInverse, X);
-				
+
 				XTXInverseList.add(XTXInverse);
 				XTXInverseXTList.add(XTXInverseXT);
 				XXTXInverseList.add(XXTXInverse);
@@ -112,15 +108,24 @@ public class RealExperiment implements Serializable {
 		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
 			System.out.println("Reading Scan " + scanNumber);
 			BOLD_Path = config.assemblyBOLDPath(scanNumber);
-			image.readImage(BOLD_Path, scanNumber);
-			BOLD_dataset.add(image);
+			bolds = BOLD.read(BOLD_Path, config, bolds);
 		}
 
 		// Prepare
 		System.out.println(
 				new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
 
-		JavaRDD<double[]> BOLD_RDD = sc.parallelize(BOLD_dataset.toDD());
+		System.out.println("BOLD 100:  value at scan 2: " + bolds.get(100).getBOLD().get(77));
+
+		JavaRDD<BOLD> BOLD_RDD = sc.parallelize(bolds).cache();
+
+		List<Long> nativeAddr_RDD = BOLD_RDD.map(bold -> {
+			return bold.getAddress();
+		}).collect();
+
+		for (int i = 0; i < bolds.size(); i++) {
+			bolds.get(i).setPointerAddr(nativeAddr_RDD.get(i));
+		}
 
 		start = System.nanoTime();
 
@@ -130,41 +135,30 @@ public class RealExperiment implements Serializable {
 
 			Broadcast<Integer> bcastStartScanNumber = sc.broadcast(scanNumber);
 
-			ArrayList<Image> incImages = new ArrayList<>();
 			for (; currentScanNumber < scanNumber + batchSize
 					&& currentScanNumber <= config.MAX_SCAN; currentScanNumber++) {
 				BOLD_Path = config.assemblyBOLDPath(currentScanNumber);
-				image.readImage(BOLD_Path, currentScanNumber);
-				incImages.add(image);
+				bolds = BOLD.read(BOLD_Path, config, bolds);
 			}
-			BOLD_dataset.setImages(incImages);
 
-			JavaRDD<double[]> inc_RDD = sc.parallelize(BOLD_dataset.toDD());
+			JavaRDD<BOLD> inc_BOLD_RDD = sc.parallelize(bolds);
 
-			// Zip the RDDs
-			JavaPairRDD<double[], double[]> zippedRDD = BOLD_RDD.zip(inc_RDD);
-
-			// Merge each pair of ArrayLists
-			BOLD_RDD = zippedRDD.map(tuple -> {
-				double[] array1 = tuple._1;
-				double[] array2 = tuple._2;
-				double[] mergedArray = new double[array1.length + array2.length];
-				System.arraycopy(array1, 0, mergedArray, 0, array1.length);
-				System.arraycopy(array2, 0, mergedArray, array1.length, array2.length);
-				return mergedArray;
-			});
-
-
-			Broadcast<Integer> bcastBatchSize = sc.broadcast(incImages.size());
-
-			JavaRDD<ArrayList<ReduceData>> reduce_RDD = BOLD_RDD
-					.map(new Function<double[], ArrayList<ReduceData>>() {
-						public ArrayList<ReduceData> call(double[] dd) {
+			JavaRDD<ArrayList<ReduceData>> reduce_RDD = inc_BOLD_RDD
+					.map(new Function<BOLD, ArrayList<ReduceData>>() {
+						public ArrayList<ReduceData> call(BOLD bold) {
+							// if (bold.getID() == 100) {
+							// 	System.out.println("BOLD " + bold.getID() + ": native addr is " + bold.getAddress()
+							// 			+ " value at scan: " + (bold.getStartScan()) + ": "
+							// 			+ bold.getPointer().get(bold.getStartScan() - 1) + " value at scan: "
+							// 			+ (bold.getStartScan() + 1) + ": " + bold.getPointer().get(bold.getStartScan())
+							// 			+ " Offset: " + bold.getStartScan() + " Batch: " + bold.getBatchSize());
+							// 	System.out.println(bold.getPointer().capacity());
+							// }
 							ArrayList<ReduceData> ret = new ArrayList<>();
 							ret.clear();
 							for (int i = bcastStartScanNumber.value(); i < bcastStartScanNumber.value()
-									+ bcastBatchSize.value(); i++) {
-								Matrix boldResponse = new Matrix(dd, i, 1, MatrixStorageScope.NATIVE);
+									+ bold.getBatchSize(); i++) {
+								Matrix boldResponse = new Matrix(bold.getPointer(), i, 1);
 								ReduceData temp = new ReduceData(bcastConfig.value());
 								Matrix beta = computeBetaHat(bcastXTXInverseXTList.value().get(i - 1),
 										boldResponse);
@@ -223,7 +217,7 @@ public class RealExperiment implements Serializable {
 					});
 
 			for (int i = 0; i < result.getSprtStat().length; i++) {
-				System.out.println("Scan " + (i + scanNumber));
+				System.out.println("\nScan " + (i + scanNumber));
 				for (int j = 0; j < result.getSprtStat()[0].length; j++) {
 					System.out.println("Contrast "
 							+ (j + 1)
@@ -238,7 +232,7 @@ public class RealExperiment implements Serializable {
 
 			scanNumber = currentScanNumber;
 			scanEnd = System.nanoTime();
-			System.out.print((scanEnd - scanStart) / 1e9 + ", ");
+			System.out.println((scanEnd - scanStart) / 1e9 + " seconds.\n");
 		}
 		System.out.println();
 

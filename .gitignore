@@ -5,3 +5,4 @@ test/
 .vscode/settings.json
 .DS_Store
 *.txt
+*.log
