@@ -85,7 +85,7 @@ public class Simulation implements Serializable {
         ArrayList<Matrix> XTXInverseList = new ArrayList<>();
         ArrayList<Matrix> XTXInverseXTList = new ArrayList<>();
         ArrayList<Matrix> XXTXInverseList = new ArrayList<>();
-        ArrayList<double[]> HList = new ArrayList<>();
+        ArrayList<float[]> HList = new ArrayList<>();
         for (int i = 1; i <= config.MAX_SCAN; i++) {
             if (i <= config.K) {
                 XTXInverseList.add(null);
@@ -97,7 +97,7 @@ public class Simulation implements Serializable {
 				Matrix XTXInverse = computeXTXInverse(X).toHeap();
 				Matrix XTXInverseXT = XTXInverse.mmult(X).toHeap();
 				Matrix XXTXInverse = X.mmul(XTXInverse).toHeap();
-				double[] H = computeH(XXTXInverse, X);
+				float[] H = computeH(XXTXInverse, X);
 
                 XTXInverseList.add(XTXInverse);
                 XTXInverseXTList.add(XTXInverseXT);
@@ -108,7 +108,7 @@ public class Simulation implements Serializable {
         Broadcast<Matrix> bcastX = sc.broadcast(X);
         Broadcast<ArrayList<Matrix>> bcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
         Broadcast<ArrayList<Matrix>> bcastXXTXInverseList = sc.broadcast(XXTXInverseList);
-        Broadcast<ArrayList<double[]>> bcastHList = sc.broadcast(HList);
+        Broadcast<ArrayList<float[]>> bcastHList = sc.broadcast(HList);
         Broadcast<Integer> bcastNumThreads = sc.broadcast(numThreads);
         Broadcast<Integer> bcastBatchSize = sc.broadcast(batchSize);
 
@@ -143,23 +143,23 @@ public class Simulation implements Serializable {
                                         Matrix Y = new Matrix(bold.getPointer(), i, 1);
                                         ReduceData reduceData = new ReduceData(bcastConfig.value());
                                         Matrix beta = computeBetaHat(bcastXTXInverseXTList.value().get(i - 1), Y);
-                                        double[] R = computeR(Y, X, beta);
+                                        float[] R = computeR(Y, X, beta);
                                         Matrix D = generateD(R, bcastHList.value().get(i - 1),
                                                 MatrixStorageScope.NATIVE);
                                         for (int j = 0; j < bcastC.value().size(); j++) {
                                             Matrix c = bcastC.value().get(j);
-                                            double variance = compute_variance_sparse_fastest(c,
+                                            float variance = compute_variance_sparse_fastest(c,
                                                     bcastXTXInverseXTList.value().get(i - 1),
                                                     bcastXXTXInverseList.value().get(i - 1), D);
-                                            double cBeta = compute_cBetaHat(c, beta);
-                                            double SPRT = compute_SPRT(cBeta, bcastConfig.value().theta0, 0.0,
+                                            float cBeta = compute_cBetaHat(c, beta);
+                                            float SPRT = compute_SPRT(cBeta, bcastConfig.value().theta0, 0.0f,
                                                     variance);
                                             int SPRTActivationStatus = compute_activation_stat(SPRT,
                                                     bcastConfig.value().SPRTUpperBound,
                                                     bcastConfig.value().SPRTLowerBound);
                                             reduceData.setVariance(j, variance);
                                             reduceData.setCBeta(j, cBeta);
-                                            reduceData.setTheta1(j, 0.0);
+                                            reduceData.setTheta1(j, 0.0f);
                                             reduceData.setSPRT(j, SPRT);
                                             reduceData.setSPRTActivationStatus(j, SPRTActivationStatus);
                                         }

@@ -14,7 +14,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 
@@ -31,10 +31,10 @@ public class Matrix implements Serializable {
 		HEAP, NATIVE
 	}
 
-	private static final double alpha = 1.0;
-	private static final double beta = 0.0;
-	private transient double[] array;
-	private transient DoublePointer pointer;
+	private static final float alpha = 1.0f;
+	private static final float beta = 0.0f;
+	private transient float[] array;
+	private transient FloatPointer pointer;
 	private int row;
 	private int col;
 	private MatrixStorageScope storageScope = MatrixStorageScope.HEAP;
@@ -45,13 +45,13 @@ public class Matrix implements Serializable {
 		this.storageScope = datatype;
 		switch (datatype) {
 			case HEAP:
-				this.array = new double[row * col];
+				this.array = new float[row * col];
 			case NATIVE:
-				this.pointer = new DoublePointer(row * col);
+				this.pointer = new FloatPointer(row * col);
 		}
 	}
 
-	public Matrix(double[] array, int row, int col, MatrixStorageScope datatype) {
+	public Matrix(float[] array, int row, int col, MatrixStorageScope datatype) {
 		this.row = row;
 		this.col = col;
 		this.storageScope = datatype;
@@ -59,11 +59,11 @@ public class Matrix implements Serializable {
 			case HEAP:
 				this.array = array;
 			case NATIVE:
-				this.pointer = new DoublePointer(array);
+				this.pointer = new FloatPointer(array);
 		}
 	}
 
-	public Matrix(DoublePointer buf, int row, int col, MatrixStorageScope datatype) {
+	public Matrix(FloatPointer buf, int row, int col, MatrixStorageScope datatype) {
 		this.row = row;
 		this.col = col;
 		this.storageScope = datatype;
@@ -75,7 +75,7 @@ public class Matrix implements Serializable {
 		}
 	}
 
-	public Matrix(DoubleBuffer buf, int row, int col, MatrixStorageScope datatype) {
+	public Matrix(FloatBuffer buf, int row, int col, MatrixStorageScope datatype) {
 		this.row = row;
 		this.col = col;
 		this.storageScope = datatype;
@@ -83,11 +83,11 @@ public class Matrix implements Serializable {
 			case HEAP:
 				buf.put(this.array);
 			case NATIVE:
-				this.pointer = new DoublePointer(buf);
+				this.pointer = new FloatPointer(buf);
 		}
 	}
 
-	public Matrix(double[] array, int row, int col) {
+	public Matrix(float[] array, int row, int col) {
 		this.row = row;
 		this.col = col;
 		this.storageScope = MatrixStorageScope.HEAP;
@@ -95,7 +95,7 @@ public class Matrix implements Serializable {
 
 	}
 
-	public Matrix(DoublePointer buf, int row, int col) {
+	public Matrix(FloatPointer buf, int row, int col) {
 		this.row = row;
 		this.col = col;
 		this.storageScope = MatrixStorageScope.NATIVE;
@@ -103,11 +103,11 @@ public class Matrix implements Serializable {
 
 	}
 
-	public Matrix(DoubleBuffer buf, int row, int col) {
+	public Matrix(FloatBuffer buf, int row, int col) {
 		this.row = row;
 		this.col = col;
 		this.storageScope = MatrixStorageScope.NATIVE;
-		this.pointer = new DoublePointer(buf);
+		this.pointer = new FloatPointer(buf);
 
 	}
 
@@ -119,13 +119,13 @@ public class Matrix implements Serializable {
 			case HEAP:
 				this.array = matrix.array.clone();
 			case NATIVE:
-				this.pointer = new DoublePointer(matrix.pointer);
+				this.pointer = new FloatPointer(matrix.pointer);
 		}
 	}
 
 	public Matrix toHeap() {
 		if (this.array == null) {
-			this.array = new double[this.row * this.col];
+			this.array = new float[this.row * this.col];
 			this.pointer.get(this.array);
 			this.pointer.deallocate();
 			this.storageScope = MatrixStorageScope.HEAP;
@@ -136,7 +136,7 @@ public class Matrix implements Serializable {
 
 	public Matrix toNative() {
 		if (this.pointer == null) {
-			this.pointer = new DoublePointer(this.array);
+			this.pointer = new FloatPointer(this.array);
 			this.array = null;
 			this.storageScope = MatrixStorageScope.NATIVE;
 			this.array = null;
@@ -149,9 +149,9 @@ public class Matrix implements Serializable {
 		out.defaultWriteObject();
 		if (this.array != null) {
 			out.writeInt(this.array.length);
-			for (double value : this.array) {
-				long bits = Double.doubleToRawLongBits(value);
-				long swappedBits = Long.reverseBytes(bits); // has to change the endianess (from big to little) to
+			for (float value : this.array) {
+				int bits = Float.floatToIntBits((float)value);
+				int swappedBits = Integer.reverseBytes(bits); // has to change the endianess (from big to little) to
 															// produce the correct result
 				out.writeLong(swappedBits);
 			}
@@ -166,7 +166,7 @@ public class Matrix implements Serializable {
 		ReadableByteChannel channel = Channels.newChannel(in);
 		channel.read(byteBuffer);
 		byteBuffer.flip(); // Prepare the buffer for reading
-		this.pointer = new DoublePointer(byteBuffer.asDoubleBuffer());
+		this.pointer = new FloatPointer(byteBuffer.asFloatBuffer());
 		this.storageScope = MatrixStorageScope.NATIVE;
 		// System.out.println("Deserialize");
 	}
@@ -175,7 +175,7 @@ public class Matrix implements Serializable {
 		this.toNative();
 		matrix.toNative();
 		Matrix res = new Matrix(this.row, matrix.col, MatrixStorageScope.NATIVE);
-		cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+		cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
 				this.row, matrix.col, this.col, alpha, this.pointer, this.col, matrix.pointer, matrix.col,
 				beta,
 				res.pointer,
@@ -187,7 +187,7 @@ public class Matrix implements Serializable {
 		this.toNative();
 		matrix.toNative();
 		Matrix res = new Matrix(this.col, matrix.col, MatrixStorageScope.NATIVE);
-		cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+		cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
 				this.col, matrix.col, this.row, alpha, this.pointer, this.col, matrix.pointer, matrix.col,
 				beta,
 				res.pointer,
@@ -199,7 +199,7 @@ public class Matrix implements Serializable {
 		this.toNative();
 		matrix.toNative();
 		Matrix res = new Matrix(this.row, matrix.row, MatrixStorageScope.NATIVE);
-		cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+		cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
 				this.row, matrix.row, this.col, alpha, this.pointer, this.col, matrix.pointer, matrix.col,
 				beta,
 				res.pointer,
@@ -224,7 +224,7 @@ public class Matrix implements Serializable {
 		matrix.toNative();
 		Matrix res = new Matrix(this.row, matrix.col, this.storageScope());
 		for (int i = 0; i < this.row; i++) {
-			double val = this.get(i, i);
+			float val = this.get(i, i);
 			for (int j = 0; j < matrix.col; j++) {
 				res.put(i * matrix.col + j, matrix.get(i, j) * val);
 			}
@@ -239,7 +239,7 @@ public class Matrix implements Serializable {
 		Matrix res = new Matrix(this.row, matrix.col, this.storageScope());
 		CSR csr = new CSR(this);
 		sparse_matrix D = new sparse_matrix();
-		int resCSR = mkl_sparse_d_create_csr(D, SPARSE_INDEX_BASE_ZERO, this.row, this.col, csr.rowsStart, csr.rowsEnd,
+		int resCSR = mkl_sparse_s_create_csr(D, SPARSE_INDEX_BASE_ZERO, this.row, this.col, csr.rowsStart, csr.rowsEnd,
 				csr.colIndex, csr.values);
 		if (resCSR != SPARSE_STATUS_SUCCESS)
 			throw new MatrixComputationErrorException("mkl_sparse_d_create_csr: Error " + resCSR);
@@ -249,8 +249,8 @@ public class Matrix implements Serializable {
 
 		matrix_descr descr = new matrix_descr();
 		descr.type(type).mode(mode).diag(diag);
-		int resMultiply = mkl_sparse_d_mm(SPARSE_OPERATION_NON_TRANSPOSE, 1.0, D, descr, SPARSE_LAYOUT_ROW_MAJOR,
-				matrix.pointer, matrix.col, matrix.col, 0.0, res.pointer, matrix.col);
+		int resMultiply = mkl_sparse_s_mm(SPARSE_OPERATION_NON_TRANSPOSE, alpha, D, descr, SPARSE_LAYOUT_ROW_MAJOR,
+				matrix.pointer, matrix.col, matrix.col, beta, res.pointer, matrix.col);
 		if (resMultiply != SPARSE_STATUS_SUCCESS)
 			throw new MatrixComputationErrorException("mkl_sparse_d_mm: Error " + resMultiply);
 
@@ -261,13 +261,13 @@ public class Matrix implements Serializable {
 	}
 
 	public class CSR {
-		DoublePointer values;
+		FloatPointer values;
 		IntPointer rowsStart;
 		IntPointer rowsEnd;
 		IntPointer colIndex;
 
 		public CSR(Matrix matrix) {
-			double[] values = new double[matrix.row * matrix.col];
+			float[] values = new float[matrix.row * matrix.col];
 			int[] rowsIndex = new int[matrix.row + 1];
 			int[] colIndex = new int[matrix.row * matrix.col];
 			int valsIndex = 0;
@@ -286,7 +286,7 @@ public class Matrix implements Serializable {
 				rowsIndex[rsIndex++] = rowCounter;
 			}
 
-			this.values = new DoublePointer(MKL_malloc((valsIndex) * Double.BYTES, 64));
+			this.values = new FloatPointer(MKL_malloc((valsIndex) * Double.BYTES, 32));
 			this.values.put(values);
 
 			this.rowsStart = new IntPointer(MKL_malloc(matrix.row * Integer.BYTES, 32));
@@ -316,12 +316,12 @@ public class Matrix implements Serializable {
 		 * https://software.intel.com/en-us/mkl-developer-reference-c-getrf#E4779E02-
 		 * 346C-4670-92AB-C67BD8559051
 		 */
-		result = LAPACKE_dgetrf(LAPACK_ROW_MAJOR, matrix.row, matrix.col, matrix.pointer, matrix.col, I); // factorization
+		result = LAPACKE_sgetrf(LAPACK_ROW_MAJOR, matrix.row, matrix.col, matrix.pointer, matrix.col, I); // factorization
 		if (result < 0)
 			throw new MatrixComputationErrorException(
 					"Matrix Inverse Factorization: parameter " + result + " had an illegal value.");
 		/* https://software.intel.com/en-us/mkl-developer-reference-c-getri */
-		result = LAPACKE_dgetri(LAPACK_ROW_MAJOR, matrix.row, matrix.pointer, matrix.row, I); // inverse
+		result = LAPACKE_sgetri(LAPACK_ROW_MAJOR, matrix.row, matrix.pointer, matrix.row, I); // inverse
 		I.deallocate();
 		if (result < 0)
 			throw new MatrixComputationErrorException("Matrix Inverse: parameter " + result + " had an illegal value.");
@@ -331,7 +331,7 @@ public class Matrix implements Serializable {
 		return matrix;
 	}
 
-	public Matrix mmul(double d) {
+	public Matrix mmul(float d) {
 		this.toNative();
 		for (int i = 0; i < row * col; i++) {
 			this.put(i, this.get(i) * d);
@@ -393,37 +393,37 @@ public class Matrix implements Serializable {
 		return this.col;
 	}
 
-	public double[] getArray() {
+	public float[] getArray() {
 		return this.array;
 	}
 
-	public DoublePointer getPointer() {
+	public FloatPointer getPointer() {
 		return this.pointer;
 	}
 
-	public double get(int pos) {
+	public float get(int pos) {
 		switch (storageScope) {
 			case HEAP:
 				return this.array[pos];
 			case NATIVE:
 				return this.pointer.get(pos);
 			default:
-				return 0.0;
+				return 0.0f;
 		}
 	}
 
-	public double get(int x, int y) {
+	public float get(int x, int y) {
 		switch (storageScope) {
 			case HEAP:
 				return this.array[x * col + y];
 			case NATIVE:
 				return this.pointer.get(x * col + y);
 			default:
-				return 0.0;
+				return 0.0f;
 		}
 	}
 
-	public void put(int pos, double val) {
+	public void put(int pos, float val) {
 		switch (storageScope) {
 			case HEAP:
 				this.array[pos] = val;
@@ -432,7 +432,7 @@ public class Matrix implements Serializable {
 		}
 	}
 
-	public void put(int x, int y, double val) {
+	public void put(int x, int y, float val) {
 		int pos = x * col + y;
 		put(pos, val);
 	}

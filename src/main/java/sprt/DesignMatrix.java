@@ -16,13 +16,13 @@ public class DesignMatrix {
 	private int row;
 	private int col;
 	private String path;
-	private double[] arr;
+	private float[] arr;
 
 	public DesignMatrix(String path, int row, int col) {
 		this.path = path;
 		this.row = row;
 		this.col = col;
-		this.arr = new double[this.row * this.col];
+		this.arr = new float[this.row * this.col];
 		try {
 			readDesignMatrix(this.path, this.row, this.col);
 		} catch (Exception e) {
@@ -43,7 +43,9 @@ public class DesignMatrix {
 					reader.close();
 					throw new FileFormatNotCorrectException("Design Matrix: Column Size Not Match!");
 				}
-				System.arraycopy(array, 0, this.arr, pos, array.length);
+				for(int i = 0; i < array.length; i++){
+					this.arr[pos + i] = (float)array[i];
+				}
 				pos+=array.length;
 				line = reader.readLine();
 			}

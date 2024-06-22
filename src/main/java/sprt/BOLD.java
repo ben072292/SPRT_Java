@@ -11,7 +11,7 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Random;
 
-import org.bytedeco.javacpp.DoublePointer;
+import org.bytedeco.javacpp.FloatPointer;
 
 import sprt.exception.FileFormatNotCorrectException;
 
@@ -26,9 +26,9 @@ public class BOLD implements Serializable {
 	private int nativeStartOffset = 0;
 	private int batchSize = 0;
 	private int scan;
-	private transient DoublePointer pointer;
+	private transient FloatPointer pointer;
 	private long pointerAddr = -1L;
-	private transient ArrayList<Double> bold = null;
+	private transient ArrayList<Float> bold = null;
 
 	public BOLD(){}
 
@@ -38,7 +38,7 @@ public class BOLD implements Serializable {
 		this.bold = new ArrayList<>(scan);
 	}
 
-	public BOLD(int id, int scan, double val) {
+	public BOLD(int id, int scan, float val) {
 		this(id, scan);
 		this.bold.add(val);
 	}
@@ -47,7 +47,7 @@ public class BOLD implements Serializable {
 		this(id, scan);
 		Random rand = new Random();
 		for (int i = 0; i < scan; i++) {
-			this.bold.add(i, rand.nextDouble());
+			this.bold.add(i, rand.nextFloat());
 		}
 	}
 
@@ -59,7 +59,7 @@ public class BOLD implements Serializable {
 		return this.batchSize;
 	}
 
-	public DoublePointer getPointer(){
+	public FloatPointer getPointer(){
 		return this.pointer;
 	}
 
@@ -71,7 +71,7 @@ public class BOLD implements Serializable {
 		return this.pointerAddr;
 	}
 
-	public ArrayList<Double> getBOLD() {
+	public ArrayList<Float> getBOLD() {
 		return this.bold;
 	}
 
@@ -113,18 +113,18 @@ public class BOLD implements Serializable {
 					if (firstRead) {
 						if (array[i] != 0.0) {
 							config.getROI().set(count + i);
-							bolds.add(new BOLD(count + i, config.MAX_SCAN, array[i]));
+							bolds.add(new BOLD(count + i, config.MAX_SCAN, (float)array[i]));
 						} else {
 							if (!config.enableROI) {
-								bolds.add(new BOLD(count + i, config.MAX_SCAN, array[i]));
+								bolds.add(new BOLD(count + i, config.MAX_SCAN, (float)array[i]));
 							}
 						}
 					} else {
 						if (config.getROI().get(count + i)) {
-							bolds.get(count + i).getBOLD().add(array[i]);
+							bolds.get(count + i).getBOLD().add((float)array[i]);
 						} else {
 							if (!config.enableROI) {
-								bolds.get(count + i).getBOLD().add(array[i]);
+								bolds.get(count + i).getBOLD().add((float)array[i]);
 							}
 						}
 					}
@@ -166,7 +166,7 @@ public class BOLD implements Serializable {
 	// private void writeObject(ObjectOutputStream out) throws IOException {
 	// 	out.defaultWriteObject();
 	// 	for (int i = this.nativeStartOffset; i < this.nativeStartOffset + this.batchSize; i++) {
-	// 		long bits = Double.doubleToRawLongBits(this.bold.get(i));
+	// 		long bits = Double.floatToRawLongBits(this.bold.get(i));
 	// 		long swappedBits = Long.reverseBytes(bits); // has to change the endianess (from big to little) to produce
 	// 													// the correct result
 	// 		out.writeLong(swappedBits);
@@ -197,7 +197,7 @@ public class BOLD implements Serializable {
 	private void writeObject(ObjectOutputStream out) throws IOException {
 		out.defaultWriteObject();
 		for (int i = this.nativeStartOffset; i < this.nativeStartOffset + this.batchSize; i++) {
-			out.writeDouble(this.bold.get(i));
+			out.writeFloat(this.bold.get(i));
 		}
 		this.nativeStartOffset += this.batchSize;
 		this.batchSize = 0;
@@ -207,18 +207,18 @@ public class BOLD implements Serializable {
 		in.defaultReadObject();
 		this.bold = null;
 		if (this.pointerAddr == -1L) {
-			this.pointer = new DoublePointer(this.scan);
+			this.pointer = new FloatPointer(this.scan);
 			this.pointerAddr = this.pointer.address();
 		} else {
 			long addr = this.pointerAddr;
-			this.pointer = new DoublePointer() {
+			this.pointer = new FloatPointer() {
 				{
 					this.address = addr;
 				}
 			};
 		}
 		for (int i = this.nativeStartOffset; i < this.nativeStartOffset + this.batchSize; i++) {
-			this.pointer.put(i,  in.readDouble());
+			this.pointer.put(i,  in.readFloat());
 		}
 	}
 

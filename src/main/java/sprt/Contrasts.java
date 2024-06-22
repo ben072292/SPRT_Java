@@ -18,12 +18,12 @@ import java.util.Scanner;
 public class Contrasts implements Serializable {
 	public int contrastLength = 0;
 	public int numContrasts = 0;
-	private double[][] contrasts;
+	private float[][] contrasts;
 
 	public Contrasts(int numOfContrasts, int contrastLength) {
 		this.numContrasts = numOfContrasts;
 		this.contrastLength = contrastLength;
-		this.contrasts = new double[numOfContrasts][contrastLength];
+		this.contrasts = new float[numOfContrasts][contrastLength];
 		readStdout();
 	}
 
@@ -36,7 +36,7 @@ public class Contrasts implements Serializable {
 		if (this.numContrasts < numOfContrasts || this.contrastLength < contrastLength)
 			System.out.println("Specified dimensions too large, will use dimensions of the whole file.");
 		else {
-			double[][] arr = new double[numOfContrasts][contrastLength];
+			float[][] arr = new float[numOfContrasts][contrastLength];
 			for (int i = 0; i < numOfContrasts; i++) {
 				for (int j = 0; j < contrastLength; j++) {
 					arr[i][j] = this.contrasts[i][j];
@@ -60,7 +60,9 @@ public class Contrasts implements Serializable {
 				i--;
 				continue;
 			}
-			this.contrasts[i - 1] = array;
+			for(int j = 0; j < array.length; j++){
+				this.contrasts[i-1][j] = (float)array[j];
+			}
 		}
 		System.out.println("Read Contrast Complete");
 		scanner.close();
@@ -84,9 +86,10 @@ public class Contrasts implements Serializable {
 			e.printStackTrace();
 		}
 		this.numContrasts = rowList.size();
-		this.contrasts = new double[this.numContrasts][this.contrastLength];
+		this.contrasts = new float[this.numContrasts][this.contrastLength];
 		for (int i = 0; i < this.numContrasts; i++) {
-			this.contrasts[i] = rowList.get(i);
+			for(int j = 0; j < this.contrastLength; j++)
+			this.contrasts[i][j] = (float)rowList.get(i)[j];
 		}
 	}
 
