@@ -6,6 +6,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
 import java.io.Serializable;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -41,7 +42,10 @@ public class RealExperiment implements Serializable {
 		long start, end, scanStart, scanEnd;
 		PrintStream out;
 		try {
-			out = new PrintStream(new FileOutputStream("real_subject_experiment.txt"));
+			Date now = new Date();
+			SimpleDateFormat formatter = new SimpleDateFormat("yyyy_MM_dd_HH_mm_ss");
+			String formattedDate = formatter.format(now);
+			out = new PrintStream(new FileOutputStream("real_subject_experiment_" + formattedDate + ".txt"));
 			System.setOut(out);
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
@@ -144,23 +148,14 @@ public class RealExperiment implements Serializable {
 			JavaRDD<ArrayList<ReduceData>> reduce_RDD = inc_BOLD_RDD
 					.map(new Function<BOLD, ArrayList<ReduceData>>() {
 						public ArrayList<ReduceData> call(BOLD bold) {
-							// if (bold.getID() == 100) {
-							// 	System.out.println("BOLD " + bold.getID() + ": native addr is " + bold.getAddress()
-							// 			+ " value at scan: " + (bold.getStartScan()) + ": "
-							// 			+ bold.getPointer().get(bold.getStartScan() - 1) + " value at scan: "
-							// 			+ (bold.getStartScan() + 1) + ": " + bold.getPointer().get(bold.getStartScan())
-							// 			+ " Offset: " + bold.getStartScan() + " Batch: " + bold.getBatchSize());
-							// 	System.out.println(bold.getPointer().capacity());
-							// }
 							ArrayList<ReduceData> ret = new ArrayList<>();
 							for (int i = bcastStartScanNumber.value(); i < bcastStartScanNumber.value()
 									+ bold.getBatchSize(); i++) {
-								Matrix boldResponse = new Matrix(bold.getPointer(), i, 1);
-								ReduceData temp = new ReduceData(bcastConfig.value());
-								Matrix beta = computeBetaHat(bcastXTXInverseXTList.value().get(i - 1),
-										boldResponse);
-								Matrix X = new Matrix(bcastX.value().getNativeBuf(), i, bcastX.value().getCol());
-								double[] R = computeR(boldResponse, X, beta);
+								Matrix X = new Matrix(bcastX.value().getPointer(), i, bcastX.value().getCol());
+								Matrix Y = new Matrix(bold.getPointer(), i, 1);
+								ReduceData reduceData = new ReduceData(bcastConfig.value());
+								Matrix beta = computeBetaHat(bcastXTXInverseXTList.value().get(i - 1), Y);
+								double[] R = computeR(Y, X, beta);
 								Matrix D = generateD(R, bcastHList.value().get(i - 1), MatrixStorageScope.NATIVE);
 								// double[] D = generateD_array(R, bcastHList.value().get(i - 1));
 								for (int j = 0; j < bcastC.value().size(); j++) {
@@ -178,13 +173,13 @@ public class RealExperiment implements Serializable {
 									int SPRTActivationStatus = compute_activation_stat(SPRT,
 											bcastConfig.value().SPRTUpperBound,
 											bcastConfig.value().SPRTLowerBound);
-									temp.setVariance(j, variance);
-									temp.setCBeta(j, cBeta);
-									temp.setTheta1(j, 0.0);
-									temp.setSPRT(j, SPRT);
-									temp.setSPRTActivationStatus(j, SPRTActivationStatus);
+									reduceData.setVariance(j, variance);
+									reduceData.setCBeta(j, cBeta);
+									reduceData.setTheta1(j, 0.0);
+									reduceData.setSPRT(j, SPRT);
+									reduceData.setSPRTActivationStatus(j, SPRTActivationStatus);
 								}
-								ret.add(temp);
+								ret.add(reduceData);
 							}
 							return ret;
 						}

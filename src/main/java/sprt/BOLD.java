@@ -26,7 +26,7 @@ public class BOLD implements Serializable {
 	private int nativeStartOffset = 0;
 	private int batchSize = 0;
 	private int scan;
-	private transient DoublePointer bold_pointer;
+	private transient DoublePointer pointer;
 	private long pointerAddr = -1L;
 	private transient ArrayList<Double> bold = null;
 
@@ -47,7 +47,7 @@ public class BOLD implements Serializable {
 		this(id, scan);
 		Random rand = new Random();
 		for (int i = 0; i < scan; i++) {
-			this.bold.set(i, rand.nextDouble());
+			this.bold.add(i, rand.nextDouble());
 		}
 	}
 
@@ -60,7 +60,7 @@ public class BOLD implements Serializable {
 	}
 
 	public DoublePointer getPointer(){
-		return this.bold_pointer;
+		return this.pointer;
 	}
 
 	public void setPointerAddr(long addr) {
@@ -207,18 +207,18 @@ public class BOLD implements Serializable {
 		in.defaultReadObject();
 		this.bold = null;
 		if (this.pointerAddr == -1L) {
-			this.bold_pointer = new DoublePointer(this.scan);
-			this.pointerAddr = this.bold_pointer.address();
+			this.pointer = new DoublePointer(this.scan);
+			this.pointerAddr = this.pointer.address();
 		} else {
 			long addr = this.pointerAddr;
-			this.bold_pointer = new DoublePointer() {
+			this.pointer = new DoublePointer() {
 				{
 					this.address = addr;
 				}
 			};
 		}
 		for (int i = this.nativeStartOffset; i < this.nativeStartOffset + this.batchSize; i++) {
-			this.bold_pointer.put(i,  in.readDouble());
+			this.pointer.put(i,  in.readDouble());
 		}
 	}
 

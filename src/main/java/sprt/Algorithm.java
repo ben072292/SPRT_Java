@@ -177,7 +177,7 @@ public class Algorithm {
 	@Deprecated
 	public static double estimateSigmaHatSquare(double[] response, Matrix X, Matrix beta, int scanNumber, int col) {
 		Matrix XBeta = X.mmul(beta);
-		double[] xBetaArray = XBeta.getArr();
+		double[] xBetaArray = XBeta.getArray();
 		double ret = 0.0;
 		for (int i = 0; i < response.length; i++) {
 			ret += Math.pow((response[i] - xBetaArray[i]), 2);
