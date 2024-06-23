@@ -23,7 +23,6 @@ import sprt.Contrasts;
 import sprt.DesignMatrix;
 import sprt.BOLD;
 import sprt.Matrix;
-import sprt.Matrix.MatrixStorageScope;
 
 import static sprt.Algorithm.*;
 import sprt.SprtStat;
@@ -84,7 +83,7 @@ public class RealExperiment implements Serializable {
 		ArrayList<Matrix> XTXInverseList = new ArrayList<>();
 		ArrayList<Matrix> XTXInverseXTList = new ArrayList<>();
 		ArrayList<Matrix> XXTXInverseList = new ArrayList<>();
-		ArrayList<float[]> HList = new ArrayList<>();
+		ArrayList<Matrix> HList = new ArrayList<>();
 		for (int i = 1; i <= config.MAX_SCAN; i++) {
 			if (i <= config.K) {
 				XTXInverseList.add(null);
@@ -96,7 +95,7 @@ public class RealExperiment implements Serializable {
 				Matrix XTXInverse = computeXTXInverse(X).toHeap();
 				Matrix XTXInverseXT = XTXInverse.mmult(X).toHeap();
 				Matrix XXTXInverse = X.mmul(XTXInverse).toHeap();
-				float[] H = computeH(XXTXInverse, X);
+				Matrix H = computeH(XXTXInverse, X).toHeap();
 
 				XTXInverseList.add(XTXInverse);
 				XTXInverseXTList.add(XTXInverseXT);
@@ -106,7 +105,7 @@ public class RealExperiment implements Serializable {
 		}
 		Broadcast<ArrayList<Matrix>> bcastXTXInverseXTList = sc.broadcast(XTXInverseXTList);
 		Broadcast<ArrayList<Matrix>> bcastXXTXInverseList = sc.broadcast(XXTXInverseList);
-		Broadcast<ArrayList<float[]>> bcastHList = sc.broadcast(HList);
+		Broadcast<ArrayList<Matrix>> bcastHList = sc.broadcast(HList);
 
 		// Continue reading till reaching the K-th scan
 		for (scanNumber = 2; scanNumber <= config.K; scanNumber++) {
@@ -155,18 +154,17 @@ public class RealExperiment implements Serializable {
 								Matrix Y = new Matrix(bold.getPointer(), i, 1);
 								ReduceData reduceData = new ReduceData(bcastConfig.value());
 								Matrix beta = computeBetaHat(bcastXTXInverseXTList.value().get(i - 1), Y);
-								float[] R = computeR(Y, X, beta);
-								Matrix D = generateD(R, bcastHList.value().get(i - 1), MatrixStorageScope.NATIVE);
-								// float[] D = generateD_array(R, bcastHList.value().get(i - 1));
+								Matrix R = computeR(Y, X, beta);
+								Matrix D = generateD(R, bcastHList.value().get(i - 1));
 								for (int j = 0; j < bcastC.value().size(); j++) {
 
 									Matrix c = bcastC.value().get(j);
-									float variance = compute_variance_sparse_fastest(c,
+									float variance = compute_variance(c,
 											bcastXTXInverseXTList.value().get(i - 1),
 											bcastXXTXInverseList.value().get(i - 1), D);
 									// float variance = computeVariance(c,
 									// bcastXList.getValue().get(i-1), D);
-									// float variance = 1.0;
+									// float variance = 1.0f;
 									float cBeta = compute_cBetaHat(c, beta);
 									float SPRT = compute_SPRT(cBeta, bcastConfig.value().theta0, 0.0f,
 											variance);
@@ -225,13 +223,13 @@ public class RealExperiment implements Serializable {
 
 			scanNumber = currentScanNumber;
 			scanEnd = System.nanoTime();
-			System.out.println((scanEnd - scanStart) / 1e9 + " seconds.\n");
+			System.out.println("Execution Time:" + (scanEnd - scanStart) / 1e9 + " seconds.\n");
 		}
 		System.out.println();
 
 		sc.close();
 		end = System.nanoTime();
-		System.out.println("Total Time Consumption: " + (end - start) / 1e9 + " seconds.");
+		System.out.println("Total Execution Time: " + (end - start) / 1e9 + " seconds.");
 
 	}
 }

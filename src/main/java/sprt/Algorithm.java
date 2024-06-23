@@ -10,6 +10,18 @@ import sprt.exception.MatrixComputationErrorException;
  *
  */
 public class Algorithm {
+	// static {
+    //     try {
+    //         System.loadLibrary("sprt_native"); // Load the native library
+    //     } catch (UnsatisfiedLinkError e) {
+    //         System.err.println("Native library failed to load: " + e);
+    //         e.printStackTrace();
+    //     } catch (Exception e) {
+    //         System.err.println("Unexpected error occurred: " + e);
+    //         e.printStackTrace();
+    //     }
+    // }
+
 	public static Matrix computeBetaHat(Matrix XTXInverseXT, Matrix Y) {
 		return XTXInverseXT.mmul(Y);
 	}
@@ -37,50 +49,11 @@ public class Algorithm {
 	}
 
 	/*
-	 * update 2019-04-12: Deprecated due to slowness, use the sparse version instead
-	 * var(c_beta_hat) = c(X'X)^(-1)X'D_r^(*)X(X'X)^(-1)c'
-	 */
-	public static float computeVariance(Matrix c, Matrix X, Matrix D) {
-		try {
-			return c.mmul(X.tmmul(X).minv())
-					.mmult(X).mmul(D)
-					.mmul(X).mmul(X.tmmul(X).minv())
-					.mmult(c).get(0);
-		} catch (MatrixComputationErrorException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-		return -1;
-	}
-
-	/*
 	 * use Inspector-Executor Sparse BLAS routines for fast sparse matrix
 	 * computation
 	 * ~200 times faster than without using sparse BLAS routines.
 	 */
-	public static float computeVarianceSparse(Matrix c, Matrix X, Matrix D) {
-		try {
-			return c.mmul(X.tmmul(X).minv()).mmult(X)
-					.mmul(D.smmul(X.mmul(X.tmmul(X).minv()))).mmult(c)
-					.get(0);
-		} catch (MatrixComputationErrorException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-		return -1;
-	}
-
-	/*
-	 * use Inspector-Executor Sparse BLAS routines for fast sparse matrix
-	 * computation
-	 * ~200 times faster than without using sparse BLAS routines.
-	 */
-	public static float compute_variance_sparse_fast(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse,
-			Matrix D) {
-		return c.mmul(XTXInverseXT).mmul(D.smmul(XXTXInverse)).mmult(c).get(0);
-	}
-
-	public static float compute_variance_sparse_fastest(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse,
+	public static float compute_variance(Matrix c, Matrix XTXInverseXT, Matrix XXTXInverse,
 			Matrix D) {
 		return c.mmul(XTXInverseXT).mmul(D.dmmul(XXTXInverse)).mmult(c).get(0);
 	}
@@ -133,12 +106,13 @@ public class Algorithm {
 	 * compute H matrix and store its diagonal value into a vector
 	 * H = X * (X'X)^-1 * X'
 	 */
-	public static float[] computeH(Matrix XXTXInverse, Matrix X) {
+	public static Matrix computeH(Matrix XXTXInverse, Matrix X) {
 		Matrix H = XXTXInverse.mmult(X);
-		float[] ret = new float[H.getRow()];
-		for (int i = 0; i < H.getRow(); i++) {
-			ret[i] = H.get(i, i);
+		Matrix ret = new Matrix(H.getRow(), 1, MatrixStorageScope.HEAP);
+		for(int i = 0; i < H.getRow(); i++){
+			ret.put(i, H.get(i * H.getRow() + i));
 		}
+		H.getPointer().deallocate();
 		return ret;
 	}
 
@@ -146,27 +120,19 @@ public class Algorithm {
 	 * r_i = Y_i - X * beta_hat
 	 * r_i is used to compute (D_r)^*
 	 */
-	public static float[] computeR(Matrix Y, Matrix X, Matrix beta) {
-		float[] ret = new float[Y.getRow()];
-		Matrix XBeta = X.mmul(beta);
-		for (int i = 0; i < Y.getRow(); i++) {
-			ret[i] = Y.get(i, 0) - XBeta.get(i, 0);
-		}
-		return ret;
+	public static Matrix computeR(Matrix Y, Matrix X, Matrix beta) {
+		return Y.vsub(X.mmul(beta));
 	}
 
 	/*
 	 * D_values is a single vector is used as a parameter of sparse matrix
 	 * computation
 	 */
-	public static Matrix generateD(float[] R, float[] H, MatrixStorageScope datatype) {
-		Matrix D = new Matrix(R.length, R.length, datatype);
-		for (int i = 0; i < R.length; i++) {
-			for (int j = 0; j < R.length; j++) {
-				D.put(i * R.length + j,  (float)(Math.pow(R[i], 2) / (1.0 - H[i])));
-			}
+	public static Matrix generateD(Matrix R, Matrix H) {
+		for(int i = 0; i < R.getRow(); i++){
+			R.put(i, (float)(Math.pow(R.get(i), 2) / (1.0f - H.get(i))));
 		}
-		return D;
+		return R;
 	}
 
 	/*
@@ -214,4 +180,12 @@ public class Algorithm {
 		ret[1] = variance / array.length;
 		return ret;
 	}
+
+	// public static ReduceData computeSPRT_CUDA(Matrix c, Matrix X, Matrix Y, Matrix XTXInverseXT, Matrix XXTXInverse, Matrix H, Config config){
+	// 	FloatBuffer buf = computeSPRT_CUDA(c.getPointer().asBuffer(), X.getPointer().asBuffer(), Y.getPointer().asBuffer(), XTXInverseXT.getPointer().asBuffer(), XXTXInverse.getPointer().asBuffer(), H.getPointer().asBuffer());
+	// 	ReduceData ret = new ReduceData(config);
+	// 	for(int i = 0; i < config.)
+	// }
+
+	// public static native FloatBuffer computeSPRT_CUDA(FloatBuffer c, FloatBuffer X, FloatBuffer Y, FloatBuffer XTXInverseXT, FloatBuffer XXTXInverse, FloatBuffer H);
 }

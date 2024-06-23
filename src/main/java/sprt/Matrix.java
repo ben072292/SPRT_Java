@@ -207,6 +207,14 @@ public class Matrix implements Serializable {
 		return res;
 	}
 
+	public Matrix vsub(Matrix matrix){
+		this.toNative();
+		matrix.toNative();
+		Matrix res = new Matrix(this.row, this.col, MatrixStorageScope.NATIVE);
+		vsSub(this.row == 1 ? this.col : this.row, this.pointer, matrix.pointer, res.pointer);
+		return res;
+	}
+
 	public Matrix smmul(Matrix matrix) {
 		this.toNative();
 		matrix.toNative();
@@ -224,7 +232,7 @@ public class Matrix implements Serializable {
 		matrix.toNative();
 		Matrix res = new Matrix(this.row, matrix.col, this.storageScope());
 		for (int i = 0; i < this.row; i++) {
-			float val = this.get(i, i);
+			float val = this.get(i);
 			for (int j = 0; j < matrix.col; j++) {
 				res.put(i * matrix.col + j, matrix.get(i, j) * val);
 			}
