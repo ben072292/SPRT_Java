@@ -1,7 +1,6 @@
 package sprt;
 
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
 import java.util.ArrayList;
 
 import sprt.Matrix.MatrixStorageScope;
@@ -184,20 +183,9 @@ public class Algorithm {
 		ret[1] = variance / array.length;
 		return ret;
 	}
-
-	public static ReduceData computeSPRT_CUDA(ArrayList<Matrix> C, Matrix X, ArrayList<Matrix> Y, Matrix XTXInverseXT, Matrix XXTXInverse,
-			Matrix H, Config config, int contrastIndex) {
-		FloatBuffer buf = computeSPRT_CUDA(C, X, Y, XTXInverseXT, XXTXInverse, H).asFloatBuffer();
-		ReduceData ret = new ReduceData(config);
-		ret.setVariance(contrastIndex, buf.get(0));
-		ret.setCBeta(contrastIndex, buf.get(1));
-		ret.setTheta1(contrastIndex, buf.get(2));
-		ret.setSPRT(contrastIndex, buf.get(3));
-		ret.setSPRTActivationStatus(contrastIndex, (int)buf.get(4));
-		return ret;
-	}
-
 	public static native ByteBuffer computeSPRT_CUDA(ArrayList<Matrix> C, Matrix X, ArrayList<Matrix> Y, Matrix XTXInverseXT, Matrix XXTXInverse, Matrix H);
+	public static native ByteBuffer computeSPRT_CUDA_v2(int scan, int totalScan, ArrayList<Matrix> C, Matrix X, ArrayList<Matrix> Y, Matrix XTXInverseXT, Matrix XXTXInverse, Matrix H);
 
 	public static native void cleanup_CUDA();
+	public static native void cleanup_CUDA_v2();
 }

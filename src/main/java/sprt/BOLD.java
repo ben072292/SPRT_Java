@@ -26,11 +26,12 @@ public class BOLD implements Serializable {
 	private int nativeStartOffset = 0;
 	private int batchSize = 0;
 	private int scan;
-	private transient FloatPointer pointer;
+	private transient FloatPointer pointer = null;
 	private long pointerAddr = -1L;
 	private transient ArrayList<Float> bold = null;
 
-	public BOLD(){}
+	public BOLD() {
+	}
 
 	public BOLD(int id, int scan) {
 		this.id = id;
@@ -47,19 +48,21 @@ public class BOLD implements Serializable {
 		this(id, scan);
 		Random rand = new Random();
 		for (int i = 0; i < scan; i++) {
-			this.bold.add(i, rand.nextFloat());
+			this.bold.add(rand.nextFloat());
 		}
+		this.nativeStartOffset = 0;
+		this.batchSize = scan;
 	}
 
-	public int getStartScan(){
+	public int getStartScan() {
 		return this.nativeStartOffset;
 	}
 
-	public int getBatchSize(){
+	public int getBatchSize() {
 		return this.batchSize;
 	}
 
-	public FloatPointer getPointer(){
+	public FloatPointer getPointer() {
 		return this.pointer;
 	}
 
@@ -75,7 +78,7 @@ public class BOLD implements Serializable {
 		return this.bold;
 	}
 
-	public int getID(){
+	public int getID() {
 		return this.id;
 	}
 
@@ -113,18 +116,18 @@ public class BOLD implements Serializable {
 					if (firstRead) {
 						if (array[i] != 0.0) {
 							config.getROI().set(count + i);
-							bolds.add(new BOLD(count + i, config.MAX_SCAN, (float)array[i]));
+							bolds.add(new BOLD(count + i, config.MAX_SCAN, (float) array[i]));
 						} else {
 							if (!config.enableROI) {
-								bolds.add(new BOLD(count + i, config.MAX_SCAN, (float)array[i]));
+								bolds.add(new BOLD(count + i, config.MAX_SCAN, (float) array[i]));
 							}
 						}
 					} else {
 						if (config.getROI().get(count + i)) {
-							bolds.get(count + i).getBOLD().add((float)array[i]);
+							bolds.get(count + i).getBOLD().add((float) array[i]);
 						} else {
 							if (!config.enableROI) {
-								bolds.get(count + i).getBOLD().add((float)array[i]);
+								bolds.get(count + i).getBOLD().add((float) array[i]);
 							}
 						}
 					}
@@ -164,34 +167,37 @@ public class BOLD implements Serializable {
 	}
 
 	// private void writeObject(ObjectOutputStream out) throws IOException {
-	// 	out.defaultWriteObject();
-	// 	for (int i = this.nativeStartOffset; i < this.nativeStartOffset + this.batchSize; i++) {
-	// 		long bits = Double.floatToRawLongBits(this.bold.get(i));
-	// 		long swappedBits = Long.reverseBytes(bits); // has to change the endianess (from big to little) to produce
-	// 													// the correct result
-	// 		out.writeLong(swappedBits);
-	// 	}
-	// 	this.nativeStartOffset += this.batchSize;
-	// 	this.batchSize = 0;
+	// out.defaultWriteObject();
+	// for (int i = this.nativeStartOffset; i < this.nativeStartOffset +
+	// this.batchSize; i++) {
+	// long bits = Double.floatToRawLongBits(this.bold.get(i));
+	// long swappedBits = Long.reverseBytes(bits); // has to change the endianess
+	// (from big to little) to produce
+	// // the correct result
+	// out.writeLong(swappedBits);
+	// }
+	// this.nativeStartOffset += this.batchSize;
+	// this.batchSize = 0;
 	// }
 
-	// private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-	// 	in.defaultReadObject();
-	// 	this.bold = null;
-	// 	if (this.pointerAddr == -1L) {
-	// 		this.bold_pointer = new DoublePointer(this.scan);
-	// 		this.pointerAddr = this.bold_pointer.address();
-	// 	} else {
-	// 		long addr = this.pointerAddr;
-	// 		this.bold_pointer = new DoublePointer() {
-	// 			{
-	// 				this.address = addr;
-	// 			}
-	// 		};
-	// 	}
-	// 	ReadableByteChannel channel = Channels.newChannel(in);
-	// 	channel.read(this.bold_pointer.position(this.nativeStartOffset).asByteBuffer());
-	// 	this.bold_pointer.position(0); // rewind internal bytebuffer
+	// private void readObject(ObjectInputStream in) throws IOException,
+	// ClassNotFoundException {
+	// in.defaultReadObject();
+	// this.bold = null;
+	// if (this.pointerAddr == -1L) {
+	// this.bold_pointer = new DoublePointer(this.scan);
+	// this.pointerAddr = this.bold_pointer.address();
+	// } else {
+	// long addr = this.pointerAddr;
+	// this.bold_pointer = new DoublePointer() {
+	// {
+	// this.address = addr;
+	// }
+	// };
+	// }
+	// ReadableByteChannel channel = Channels.newChannel(in);
+	// channel.read(this.bold_pointer.position(this.nativeStartOffset).asByteBuffer());
+	// this.bold_pointer.position(0); // rewind internal bytebuffer
 	// }
 
 	private void writeObject(ObjectOutputStream out) throws IOException {
@@ -218,11 +224,15 @@ public class BOLD implements Serializable {
 			};
 		}
 		for (int i = this.nativeStartOffset; i < this.nativeStartOffset + this.batchSize; i++) {
-			this.pointer.put(i,  in.readFloat());
+			this.pointer.put(i, in.readFloat());
 		}
 	}
 
-	public static void main(String[] args){
+	public boolean isNative() {
+		return (this.bold == null && this.pointer != null);
+	}
+
+	public static void main(String[] args) {
 		ArrayList<BOLD> bolds = null;
 		Config config = new Config();
 		int scanNumber = 1;

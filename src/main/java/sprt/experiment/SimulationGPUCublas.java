@@ -11,6 +11,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.List;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
@@ -35,7 +36,7 @@ import static sprt.Algorithm.*;
  * @author Ben
  *
  */
-public class SimulationGPU implements Serializable {
+public class SimulationGPUCublas implements Serializable {
 
     public static void main(String[] args) {
         MKL_Set_Num_Threads(1);
@@ -109,11 +110,17 @@ public class SimulationGPU implements Serializable {
         Broadcast<ArrayList<Matrix>> bcastHList = sc.broadcast(HList);
         Broadcast<Integer> bcastBatchSize = sc.broadcast(batchSize);
 
-        // Prepare
-        System.out.println(
-                new Date() + ": Successfully reading in first " + config.K + " scans, Now start SPRT estimation.");
-
         JavaRDD<BOLD> BOLD_RDD = sc.parallelize(bolds);
+
+        List<Long> nativeAddr_RDD = BOLD_RDD.map(bold -> {
+            return bold.getAddress();
+        }).collect();
+
+        for (int i = 0; i < bolds.size(); i++) {
+            bolds.get(i).setPointerAddr(nativeAddr_RDD.get(i));
+        }
+
+        BOLD_RDD = sc.parallelize(bolds).cache();
 
         start = System.nanoTime();
         scanNumber = 79;
@@ -128,6 +135,9 @@ public class SimulationGPU implements Serializable {
                             boldIterator.forEachRemaining(bolds::add);
 
                             ArrayList<Matrix> YList = new ArrayList<>(bolds.size());
+                            for (int i = 0; i < bolds.size(); i++) {
+                                YList.add(new Matrix(bolds.get(i).getPointer(), bcastStartScanNumber.value(), 1));
+                            }
 
                             ArrayList<SprtStat> SPRTActivation = new ArrayList<>();
 
@@ -136,11 +146,11 @@ public class SimulationGPU implements Serializable {
                                     .value() + bcastBatchSize.value()
                                     && i < bcastConfig.value().MAX_SCAN; i++) {
                                 Matrix X = new Matrix(bcastX.value().getArray(), i, bcastX.value().getCol()).toNative();
-                                for (int j = 0; j < bolds.size(); j++) {
-                                    YList.add(new Matrix(bolds.get(i).getPointer(), i, 1));
-                                }
                                 for (int j = 0; j < bcastC.value().size(); j++) {
                                     bcastC.value().get(j).toNative();
+                                }
+                                for (int j = 0; j < YList.size(); j++) {
+                                    YList.get(i).setRow(i);
                                 }
                                 FloatBuffer SPRT_buf = computeSPRT_CUDA(bcastC.value(), X, YList,
                                         bcastXTXInverseXTList.value().get(i - 1).toNative(),
