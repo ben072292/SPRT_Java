@@ -1,6 +1,5 @@
 package sprt;
 
-import java.util.List;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -69,27 +68,24 @@ public class Contrasts implements Serializable {
 	}
 
 	public void readFile(String path) {
-		List<double[]> rowList = new ArrayList<>();
 		BufferedReader reader;
 		try {
 			reader = new BufferedReader(new FileReader(path));
 			String line = reader.readLine();
-			while (line != null) {
-				double[] array = Arrays.stream(line.split("\\s")).mapToDouble(Integer::parseInt).toArray();
-				if (this.contrastLength == 0)
-					this.contrastLength = array.length;
-				rowList.add(array);
+			this.numContrasts = Integer.parseInt(line);
+			this.contrasts = new float[this.numContrasts][];
+			for(int i = 0; i < this.numContrasts; i++) {
 				line = reader.readLine();
+				double[] array = Arrays.stream(line.split("\\s")).mapToDouble(Integer::parseInt).toArray();
+				this.contrasts[i] = new float[array.length];
+				for(int j = 0; j < array.length; j++){
+					this.contrasts[i][j] = (float)array[j];
+				}
 			}
+			this.contrastLength = this.contrasts[0].length;
 			reader.close();
 		} catch (IOException e) {
 			e.printStackTrace();
-		}
-		this.numContrasts = rowList.size();
-		this.contrasts = new float[this.numContrasts][this.contrastLength];
-		for (int i = 0; i < this.numContrasts; i++) {
-			for(int j = 0; j < this.contrastLength; j++)
-			this.contrasts[i][j] = (float)rowList.get(i)[j];
 		}
 	}
 

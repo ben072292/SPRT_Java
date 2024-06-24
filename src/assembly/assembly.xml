@@ -11,6 +11,7 @@
             <directory>${project.build.directory}</directory>
             <includes>
                 <include>libsprt_native.so</include> <!-- Include the .so file -->
+                <include>libsprt_native_cuda.so</include> <!-- Include the .so file -->
             </includes>
             <outputDirectory>/</outputDirectory>
         </fileSet>

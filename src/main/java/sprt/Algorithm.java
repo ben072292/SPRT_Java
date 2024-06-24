@@ -1,5 +1,9 @@
 package sprt;
 
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
+import java.util.ArrayList;
+
 import sprt.Matrix.MatrixStorageScope;
 import sprt.exception.MatrixComputationErrorException;
 
@@ -10,17 +14,17 @@ import sprt.exception.MatrixComputationErrorException;
  *
  */
 public class Algorithm {
-	// static {
-    //     try {
-    //         System.loadLibrary("sprt_native"); // Load the native library
-    //     } catch (UnsatisfiedLinkError e) {
-    //         System.err.println("Native library failed to load: " + e);
-    //         e.printStackTrace();
-    //     } catch (Exception e) {
-    //         System.err.println("Unexpected error occurred: " + e);
-    //         e.printStackTrace();
-    //     }
-    // }
+	static {
+	try {
+	System.loadLibrary("sprt_native_cuda"); // Load the native library
+	} catch (UnsatisfiedLinkError e) {
+	System.err.println("Native library failed to load: " + e);
+	e.printStackTrace();
+	} catch (Exception e) {
+	System.err.println("Unexpected error occurred: " + e);
+	e.printStackTrace();
+	}
+	}
 
 	public static Matrix computeBetaHat(Matrix XTXInverseXT, Matrix Y) {
 		return XTXInverseXT.mmul(Y);
@@ -41,7 +45,7 @@ public class Algorithm {
 	}
 
 	public static float computeZ(Matrix c, Matrix beta, float variance) {
-		return compute_cBetaHat(c, beta) / (float)Math.sqrt(variance);
+		return compute_cBetaHat(c, beta) / (float) Math.sqrt(variance);
 	}
 
 	public static float computeZ(float cBeta, float variance) {
@@ -68,7 +72,7 @@ public class Algorithm {
 	 * - (c*beta_hat-theta_1)'* Var(c*beta_hat)^-1 * (c*beta_hat-theta_1)} / 2
 	 */
 	public static float compute_SPRT(float cBetaHat, float thetaZero, float thetaOne, float variance) {
-		return (float)(Math.pow((cBetaHat - thetaZero), 2) - Math.pow((cBetaHat - thetaOne), 2)) / (2 * variance);
+		return (float) (Math.pow((cBetaHat - thetaZero), 2) - Math.pow((cBetaHat - thetaOne), 2)) / (2 * variance);
 	}
 
 	/**
@@ -78,14 +82,14 @@ public class Algorithm {
 	 * computes the stopping rule's boundary values A and B
 	 */
 	public static float SPRTUpperBound(float alpha, float beta) {
-		float A = (float)Math.log((1 - beta) / alpha);
-		float B = (float)Math.log(beta / (1 - alpha));
+		float A = (float) Math.log((1 - beta) / alpha);
+		float B = (float) Math.log(beta / (1 - alpha));
 		return Math.max(A, B);
 	}
 
 	public static float SPRTLowerBound(float alpha, float beta) {
-		float A = (float)Math.log((1 - beta) / alpha);
-		float B = (float)Math.log(beta / (1 - alpha));
+		float A = (float) Math.log((1 - beta) / alpha);
+		float B = (float) Math.log(beta / (1 - alpha));
 		return Math.min(A, B);
 	}
 
@@ -99,7 +103,7 @@ public class Algorithm {
 	}
 
 	public static float computeTheta1(float Z, float variance) {
-		return Z * (float)Math.sqrt(variance);
+		return Z * (float) Math.sqrt(variance);
 	}
 
 	/*
@@ -109,7 +113,7 @@ public class Algorithm {
 	public static Matrix computeH(Matrix XXTXInverse, Matrix X) {
 		Matrix H = XXTXInverse.mmult(X);
 		Matrix ret = new Matrix(H.getRow(), 1, MatrixStorageScope.HEAP);
-		for(int i = 0; i < H.getRow(); i++){
+		for (int i = 0; i < H.getRow(); i++) {
 			ret.put(i, H.get(i * H.getRow() + i));
 		}
 		H.getPointer().deallocate();
@@ -129,8 +133,8 @@ public class Algorithm {
 	 * computation
 	 */
 	public static Matrix generateD(Matrix R, Matrix H) {
-		for(int i = 0; i < R.getRow(); i++){
-			R.put(i, (float)(Math.pow(R.get(i), 2) / (1.0f - H.get(i))));
+		for (int i = 0; i < R.getRow(); i++) {
+			R.put(i, (float) (Math.pow(R.get(i), 2) / (1.0f - H.get(i))));
 		}
 		return R;
 	}
@@ -181,11 +185,19 @@ public class Algorithm {
 		return ret;
 	}
 
-	// public static ReduceData computeSPRT_CUDA(Matrix c, Matrix X, Matrix Y, Matrix XTXInverseXT, Matrix XXTXInverse, Matrix H, Config config){
-	// 	FloatBuffer buf = computeSPRT_CUDA(c.getPointer().asBuffer(), X.getPointer().asBuffer(), Y.getPointer().asBuffer(), XTXInverseXT.getPointer().asBuffer(), XXTXInverse.getPointer().asBuffer(), H.getPointer().asBuffer());
-	// 	ReduceData ret = new ReduceData(config);
-	// 	for(int i = 0; i < config.)
-	// }
+	public static ReduceData computeSPRT_CUDA(ArrayList<Matrix> C, Matrix X, ArrayList<Matrix> Y, Matrix XTXInverseXT, Matrix XXTXInverse,
+			Matrix H, Config config, int contrastIndex) {
+		FloatBuffer buf = computeSPRT_CUDA(C, X, Y, XTXInverseXT, XXTXInverse, H).asFloatBuffer();
+		ReduceData ret = new ReduceData(config);
+		ret.setVariance(contrastIndex, buf.get(0));
+		ret.setCBeta(contrastIndex, buf.get(1));
+		ret.setTheta1(contrastIndex, buf.get(2));
+		ret.setSPRT(contrastIndex, buf.get(3));
+		ret.setSPRTActivationStatus(contrastIndex, (int)buf.get(4));
+		return ret;
+	}
 
-	// public static native FloatBuffer computeSPRT_CUDA(FloatBuffer c, FloatBuffer X, FloatBuffer Y, FloatBuffer XTXInverseXT, FloatBuffer XXTXInverse, FloatBuffer H);
+	public static native ByteBuffer computeSPRT_CUDA(ArrayList<Matrix> C, Matrix X, ArrayList<Matrix> Y, Matrix XTXInverseXT, Matrix XXTXInverse, Matrix H);
+
+	public static native void cleanup_CUDA();
 }

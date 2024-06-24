@@ -347,6 +347,10 @@ public class Matrix implements Serializable {
 		return this;
 	}
 
+	public ByteBuffer getDirectBuffer(){
+		return this.pointer.asByteBuffer();
+	}
+
 	public void print(int howMany, String s) {
 		System.out.println("On " + (pointer == null ? "native memory." : "heap memory."));
 		System.out.println("Show Matrix: Size: " + this.row + "*" + this.col + s);

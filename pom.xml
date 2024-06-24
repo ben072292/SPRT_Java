@@ -47,7 +47,7 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>sprt.RealExperiment</mainClass>
+              <mainClass>sprt.experiment.RealExperiment</mainClass>
             </manifest>
           </archive>
           <descriptorRefs>
@@ -71,24 +71,40 @@
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.0.0</version>
         <executions>
-          <execution>
-            <id>compile-cpp</id>
-            <phase>compile</phase>
-            <goals>
-              <goal>exec</goal>
-            </goals>
-            <configuration>
-              <executable>sh</executable>
-              <arguments>
-                <argument>-c</argument>
-                <argument>
-                  g++ -O3 -std=c++11 -I${java.home}/include -I${java.home}/include/linux -shared -fPIC -o ${project.build.directory}/libsprt_native.so $(find ${project.basedir}/src/main/native -name '*.cpp')
-                </argument>
-              </arguments>
-            </configuration>
-          </execution>
+            <execution>
+                <id>compile-cpp</id>
+                <phase>compile</phase>
+                <goals>
+                    <goal>exec</goal>
+                </goals>
+                <configuration>
+                    <executable>sh</executable>
+                    <arguments>
+                        <argument>-c</argument>
+                        <argument>
+                            g++ -O3 -std=c++11 -I${java.home}/include -I${java.home}/include/linux -shared -fPIC -o ${project.build.directory}/libsprt_native.so $(find ${project.basedir}/src/main/native -name '*.cpp')
+                        </argument>
+                    </arguments>
+                </configuration>
+            </execution>
+            <execution>
+                <id>compile-cuda</id>
+                <phase>compile</phase>
+                <goals>
+                    <goal>exec</goal>
+                </goals>
+                <configuration>
+                    <executable>sh</executable>
+                    <arguments>
+                        <argument>-c</argument>
+                        <argument>
+                            nvcc -O3 -std=c++11 --default-stream per-thread -allow-unsupported-compiler -lcublas -I${java.home}/include -I${java.home}/include/linux -shared -Xcompiler -fPIC -o ${project.build.directory}/libsprt_native_cuda.so $(find ${project.basedir}/src/main/native -name '*.cu')
+                        </argument>
+                    </arguments>
+                </configuration>
+            </execution>
         </executions>
-      </plugin>
+    </plugin>
     </plugins>
   </build>
   <dependencies>
